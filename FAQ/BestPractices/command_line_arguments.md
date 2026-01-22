@@ -1,14 +1,12 @@
 # Use Command Line Arguments Instead of Interactive Input
 
 If a program you submit to a compute node requires inputs, you should pass
-them with command line arguments, not keyboarding in interactively.
+them with command line arguments, not keyboarding in interactively. When you work on a cluster like Euler, you can't be expected to type in arguments interactively.
 
-We find that some students run their code on the head node directly, not because
+In the past, some students ran their code on the head node directly, not because
 they do not know the rules of using a cluster, but their Slurm jobs stall on a compute node, 
 so they feel forced to try it interactively on the head node. This is possibly 
 the result of writing a program that expects `std::cin` inputs.
-If this is your case, please read and let us get this out of the way 
-before we write programs that, if running on the head node, would be problematic.
 
 ---
 
@@ -26,16 +24,11 @@ lines in your code.
 
 Instead, you should pass the inputs with command line arguments. 
 Command line arguments are given after the name of the program when it is called.
-We provided the call pattern for every HW problem that needs it, so simply
+We have tried to provide the call pattern for every HW problem that needs it, please 
 follow it. An example is
 ```
 ./task N
 ```
-Note that though it is called running a command, that does not mean you should run 
-it on the head node. Always use a Slurm script to submit this command.
-
-Of course, you need to configure your code properly so it reads the provided 
-arguments...
 
 ---
 

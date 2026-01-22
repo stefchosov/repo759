@@ -41,3 +41,4 @@ Then, look through the contents of `hw_check` this is exactly what we will see f
 1. `git push` to update the remote
 1. Repeat until you're done with the homework tasks
 1. Check your homework submission
+s
