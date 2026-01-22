@@ -1,9 +1,17 @@
 # Workflow
 
-It's good to develop a comfortable workflow early on in which you work on your assigment on your machine and/or Euler, and then you test before final submission on Euler. When getting a job in the real world, often you face a similar model of having a small personal computer and a powerful shared server system like Euler.
+### Recommended Workflow, in a nutshell
+* **Develop:** Code on your personal machine or the Euler server.
+* **Test:** Always run final tests on Euler before submitting.
+* **Why:** This mirrors professional industry standards, where you balance a personal computer with a powerful, shared remote server.
+
+### Executive Summary: Build local, test remote.
+
+---
+---
 
 ### Sample Workflow
-For a starting point, a typical workflow is listed below:
+A typical workflow is as follows:
 1. Write most of your code using your favorite editor/IDE on your computer (such as [Atom](https://atom.io/) or the cross-platform highly-configurable [Visual Studio Code](https://code.visualstudio.com/)).
 1. If your computer has a Nvidia GPU, build and test your code as best you can on your computer until you are convinced that it is doing what it should be doing.
     - If your computer does not, additional resources may be available to you depending on your department. Please refer to technical guides from your department, Piazza discussions, or post a question there. 
@@ -27,3 +35,4 @@ Get comfortable as soon as possible with the following:
 - file editing on Euler with `nano` or `vim`/`emacs` (you can edit remotely with `vs code`)
 - customizing a configurable editor, like the ones listed above, to suit your needs
 - submitting jobs to build and run your code with slurm on Euler (`sbatch`)
+- highly recommended: you can use more sophisticated utilities such as MoabXterm (on Windows), or similar apps for Mac or Linux

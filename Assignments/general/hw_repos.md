@@ -1,10 +1,4 @@
 
-### Login Gitlab
-1. Access the GitLab instance by opening [https://git.doit.wisc.edu/](https://git.doit.wisc.edu/) with your browser.
-1. Login using the bottom-right button, the UW-Madison NetID login option.
-1. Create your HW repo as instructed in class, add all instructors as collaborators as instructed in class. The instructors need at least Reporter access, but it is safe to give higher access such as Maintainer to them.
-1. Clone your HW repo somewhere, such as your local machine, so you can work on it. You may need to set up your Personal Access Token to clone with HTTPS.
-
 ### Turning in Homework
 All source code files should be located in the appropriate `HWXX` directory with no subdirectories. We will grade the latest commit on the `main` branch as cloned at the due time of the assignment. If you have any doubt about what will be received for grading, you can clone a new copy of your repo and you will see exactly what we will see for grading.
 
@@ -22,12 +16,12 @@ Commit all staged files:
 git commit -m "my message"
 ```
 
-Update the remote (GitLab instance) with all of your local commits:
+Update the remote (GitHub instance) with all of your local commits:
 ```
 git push
 ```
 
-Update your local repository with all commits on the remote (GitLab instance):
+Update your local repository with all commits on the remote (GitHub instance):
 ```
 git pull
 ```
