@@ -12,7 +12,7 @@ Prompt: Using the specification provided and the header file, generate the code 
 
 int main()
 {
-    const unsigned int n = 1024; // >= 1000 as required :contentReference[oaicite:2]{index=2}
+    const unsigned int n = 1024;
 
     std::vector<double> Avec(n * n, 1.0);
     std::vector<double> Bvec(n * n, 1.0);

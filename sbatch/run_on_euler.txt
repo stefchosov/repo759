@@ -1,0 +1,54 @@
+===============================================
+HW03 - Steps to Run on Euler
+===============================================
+
+1. SSH into Euler and navigate to your repo:
+   cd ~/Documents/cse759/repo759/sbatch
+
+2. Submit the batch jobs:
+   sbatch task1.sbatch
+   sbatch task2.sbatch
+   sbatch task3.sbatch
+   sbatch task3_scaling.sbatch
+
+3. Check job status:
+   squeue -u $USER
+
+4. View output files (after jobs complete):
+   cat task1.out
+   cat task2.out
+   cat task3.out
+   cat task3_scaling.out
+
+5. Generate the plot for Problem 3c (after task3_scaling.sbatch completes):
+   python3 generate_plot.py
+
+6. Verify the plot was created:
+   ls -lh ../HW03/task3.pdf
+
+===============================================
+Expected Outputs
+===============================================
+
+task1.out:
+  1
+  2
+  6
+  24
+  120
+  720
+  5040
+  40320
+
+task2.out:
+  (16 space-separated integers - varies based on random number)
+
+task3.out:
+  <time_in_ms>
+  <first_element>
+  <last_element>
+
+task3_scaling.out:
+  Results for n = 2^10 through 2^29
+  Creates scaling_512.dat and scaling_16.dat in HW03/
+
