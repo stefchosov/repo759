@@ -35,13 +35,6 @@ int main(int argc, char *argv[]) {
             B[i] = dist(gen);
         }
 
-        // Prefetch to GPU before timing
-        int device;
-        cudaGetDevice(&device);
-        cudaMemPrefetchAsync(A, size * sizeof(int), device);
-        cudaMemPrefetchAsync(B, size * sizeof(int), device);
-        cudaMemPrefetchAsync(C, size * sizeof(int), device);
-
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
@@ -80,12 +73,6 @@ int main(int argc, char *argv[]) {
             B[i] = dist(gen);
         }
 
-        int device;
-        cudaGetDevice(&device);
-        cudaMemPrefetchAsync(A, size * sizeof(float), device);
-        cudaMemPrefetchAsync(B, size * sizeof(float), device);
-        cudaMemPrefetchAsync(C, size * sizeof(float), device);
-
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
@@ -123,12 +110,6 @@ int main(int argc, char *argv[]) {
             A[i] = dist(gen);
             B[i] = dist(gen);
         }
-
-        int device;
-        cudaGetDevice(&device);
-        cudaMemPrefetchAsync(A, size * sizeof(double), device);
-        cudaMemPrefetchAsync(B, size * sizeof(double), device);
-        cudaMemPrefetchAsync(C, size * sizeof(double), device);
 
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
