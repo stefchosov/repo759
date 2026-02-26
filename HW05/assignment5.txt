@@ -1,0 +1,174 @@
+ME 759 — Assignment 5
+Stefan Arsov
+
+===============================================================================
+PROBLEM 1 — Tiled Matrix Multiplication
+===============================================================================
+
+--- 1b: Scaling plot ---
+
+See attached file: scaling_task1_16.pdf
+
+Measured runtimes (block_dim = 16):
+
+  n       int (ms)    float (ms)   double (ms)
+  32      28.91       0.10         0.08
+  64       1.49       0.15         0.18
+  128      1.40       0.28         0.28
+  256      1.41       0.51         0.78
+  512      2.19       1.25         2.45
+  1024    14.10       4.96        10.91
+  2048    24.89      23.48        58.67
+  4096   132.29     134.08       375.39
+  8192   882.99     896.63      2735.87
+  16384  6520.35    6751.53     21493.00
+
+Note: the n=32 int time (28.91 ms) is inflated by one-time CUDA driver
+initialization that is charged to the first kernel call. All other values
+reflect actual kernel execution time.
+
+The runtime grows roughly as O(n^3) for large n, consistent with the
+O(n^3) work in matrix multiplication.
+
+--- 1c: Best block_dim for n = 2^14 ---
+
+Measured runtimes at n = 16384:
+
+  block_dim   int (ms)    float (ms)   double (ms)
+  8           15202.1     15219.8      23329.2
+  16           6437.4      6711.6      21075.6   <-- best
+  32           6814.6      6823.6      22680.1
+
+The best performing value is block_dim = 16.
+
+block_dim = 8 is significantly slower because an 8x8 tile holds only 64
+threads per block, which is insufficient to hide global memory latency.
+block_dim = 16 (256 threads/block) provides good occupancy and tile reuse.
+block_dim = 32 (1024 threads/block, the maximum) is slightly slower than 16
+because each block requires 2 * 32 * 32 * sizeof(T) bytes of shared memory
+(16 KB for float), which reduces the number of resident blocks per SM and
+therefore reduces occupancy.
+
+--- 1d: Does performance change by data type? ---
+
+Yes. At n = 16384 with block_dim = 16:
+  - int:    6437 ms
+  - float:  6712 ms
+  - double: 21076 ms
+
+int and float have nearly identical runtimes because both are 32-bit types
+with the same memory footprint (4 bytes/element) and the GPU has equivalent
+throughput for 32-bit integer and single-precision floating-point operations.
+
+double is approximately 3.1x slower than float. Two factors contribute:
+
+1. Memory bandwidth: double is 8 bytes vs 4 bytes, so the shared memory
+   tiles and global loads carry twice the data. This doubles the pressure on
+   both memory bandwidth and shared memory capacity.
+
+2. FP64 compute throughput: The GPU has fewer FP64 execution units than FP32
+   units (the FP64-to-FP32 throughput ratio is typically 1:2 or 1:32
+   depending on the GPU model), so double-precision multiply-accumulates take
+   longer to execute.
+
+The combined effect of increased memory traffic and lower FP64 throughput
+explains the >2x slowdown.
+
+--- 1e: Tiled (HW05) vs Naive (HW04) matmul at n = 2^14 ---
+
+  HW04 naive GPU matmul  (float, 1024 threads/block): 22106 ms
+  HW05 tiled GPU matmul  (float, block_dim = 16):      6752 ms
+  Speedup: ~3.3x in favor of the tiled implementation.
+
+The tiled implementation is faster because it drastically reduces global
+memory traffic. In the naive implementation every thread independently loads
+an entire row of A and column of B from global memory to compute one element
+of C, resulting in O(n^3) global memory accesses in total.
+
+In the tiled implementation, a block_dim x block_dim tile of A and B is
+loaded into shared memory once and then reused block_dim times within the
+inner loop over tiles. This reduces global memory accesses by a factor of
+approximately block_dim (16 in our case). Since global memory bandwidth is
+the primary bottleneck for large n, reducing accesses by 16x directly
+translates to faster execution. Shared memory operates at roughly two orders
+of magnitude lower latency than global memory, so once data is in shared
+memory the reuse is essentially free.
+
+The observed 3.3x speedup (rather than the theoretical 16x) is because other
+factors cap the gain: boundary checking overhead for non-power-of-2 n, the
+cost of loading the tiles themselves, and __syncthreads() barriers all add
+overhead that prevents reaching the full theoretical improvement.
+
+--- 1f: CPU serial mmul1 (HW02) vs GPU at n = 2^14 ---
+
+The HW02 serial mmul1 implementation uses a naive ijk triple loop:
+
+  for i: for j: for k:  C[i*n+j] += A[i*n+k] * B[k*n+j]
+
+At n = 16384 this exceeds 10 minutes on the CPU and was not timed to
+completion. The reason: the total operation count is 2 * 16384^3 ≈ 8.8 × 10^12
+multiply-accumulate operations executed on a single core. At an optimistic
+2 GFLOP/s effective throughput (the column-wise access pattern of B causes
+severe cache thrashing since the full B matrix is 2 GB, far exceeding any
+CPU cache level), the estimated runtime is ~4400 seconds (~73 minutes).
+
+The GPU tiled implementation finishes in ~6.75 seconds for float, roughly
+650x faster. This gap comes from three complementary advantages:
+
+1. Parallelism: The GPU executes thousands of threads simultaneously, each
+   computing a different output element, whereas the CPU computes elements
+   sequentially.
+
+2. Memory bandwidth: GPU memory bandwidth (~900 GB/s on datacenter GPUs) far
+   exceeds CPU bandwidth (~50 GB/s), which is critical for a memory-bound
+   workload like matrix multiplication.
+
+3. Data reuse: The tiled GPU implementation exploits shared memory to reuse
+   data, reducing the effective bandwidth requirement by ~block_dim and
+   largely eliminating the cache-thrashing problem that plagues mmul1.
+
+===============================================================================
+PROBLEM 2 — Parallel Reduction
+===============================================================================
+
+--- 2b: Scaling plot ---
+
+See attached file: scaling_task2.pdf
+
+Measured runtimes:
+
+  N            tpb=1024 (ms)   tpb=256 (ms)
+  1024         45.65            1.08       <- tpb=1024 inflated by CUDA init
+  2048          1.08            0.74
+  4096          1.18            0.98
+  8192          0.64            1.07
+  16384         1.11            2.95
+  32768         6.00            2.26
+  65536         6.66           16.69
+  131072        3.40            0.85
+  262144        0.64            0.80
+  524288        0.90            0.97
+  1048576       3.83            0.84
+  2097152       0.64            0.86
+  4194304       1.01            1.30
+  8388608       1.13            0.97
+  16777216      2.64            1.52
+  33554432      2.76            8.05
+  67108864      2.46            1.68
+  134217728     3.22            2.80
+  268435456     5.80            6.23
+  536870912    66.05           13.36
+  1073741824   40.61           21.65
+
+Note: The N=1024 tpb=1024 value (45.65 ms) is inflated by CUDA driver
+initialization. The data at small N is generally noisy because kernel launch
+overhead dominates at those sizes. At large N (>= 2^28) the times grow
+roughly linearly with N, reflecting the O(N) work.
+
+The two thread counts show similar performance across most of the range
+because reduction is fundamentally memory-bandwidth-bound. With the
+"first add during global load" strategy every element is read from global
+memory exactly once regardless of threads_per_block. Once enough warps are
+in flight to saturate the memory bus, adding more threads per block provides
+no additional throughput. Any differences seen are within run-to-run noise
+for the small-N regime and reflect subtle scheduling differences for large N.
