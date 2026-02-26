@@ -5,6 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
+#SBATCH --mem=16G
 #SBATCH --output=task1_blockdim-%j.out
 #SBATCH --error=task1_blockdim-%j.err
 
