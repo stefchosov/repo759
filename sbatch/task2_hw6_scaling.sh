@@ -18,7 +18,7 @@
 
 module load nvidia/cuda/13.0
 
-cd $SLURM_SUBMIT_DIR
+cd "${SLURM_SUBMIT_DIR%/sbatch}"
 
 nvcc HW06/task2.cu HW06/scan.cu \
     -Xcompiler -O3 -Xcompiler -Wall -Xptxas -O3 -std c++17 \

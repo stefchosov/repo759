@@ -17,7 +17,7 @@
 
 module load nvidia/cuda/13.0
 
-cd $SLURM_SUBMIT_DIR
+cd "${SLURM_SUBMIT_DIR%/sbatch}"
 
 N=${1:-1048576}
 TPB=${2:-1024}
