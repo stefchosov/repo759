@@ -18,4 +18,4 @@ cd "${SLURM_SUBMIT_DIR%/sbatch}/HW06"
 
 nvcc task2.cu scan.cu -Xcompiler -O3 -Xcompiler -Wall -Xptxas -O3 -std c++17 -o task2
 
-cuda-memcheck ./task2 1024 1024
+compute-sanitizer ./task2 1024 1024
