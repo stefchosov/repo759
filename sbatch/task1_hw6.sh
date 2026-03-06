@@ -9,18 +9,17 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 
-# Usage: sbatch sbatch/task1_hw6.sh <n>
-#   n   -- matrix dimension (default 1024)
-# Compiles HW06/task1 and runs a single timing measurement.
+# Usage: sbatch sbatch/task1_hw6.sh <n> <n_tests>
+#   n        -- matrix dimension (default 1024)
+#   n_tests  -- number of mmul calls to average over (default 10)
 
 module load nvidia/cuda/13.0
 
-cd "${SLURM_SUBMIT_DIR%/sbatch}"
+cd "${SLURM_SUBMIT_DIR%/sbatch}/HW06"
 
 N=${1:-1024}
+N_TESTS=${2:-10}
 
-nvcc HW06/task1.cu HW06/mmul.cpp \
-    -Xcompiler -O3 -Xcompiler -Wall -Xptxas -O3 -std c++17 \
-    -lcublas -o HW06/task1
+nvcc task1.cu mmul.cu -Xcompiler -O3 -Xcompiler -Wall -Xptxas -O3 -lcublas -std c++17 -o task1
 
-./HW06/task1 "$N"
+./task1 "$N" "$N_TESTS"

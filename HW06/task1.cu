@@ -3,12 +3,12 @@
 // Usage: Implementation based on problem specification from HW06.pdf
 
 // Test harness for HW06 Task 1: cuBLAS matrix multiplication.
-// Usage: ./task1 n
-//   n           -- matrix dimension (A, B, C are n x n, column-major)
+// Usage: ./task1 n n_tests
+//   n        -- matrix dimension (A, B, C are n x n, column-major)
+//   n_tests  -- number of mmul calls; average time is reported
 //
-// Output (3 lines):
-//   C[n*n - 1]  -- last element of the result matrix (column-major indexing)
-//   ms          -- elapsed time in milliseconds (cuBLAS call + sync)
+// Output (1 line):
+//   avg_ms   -- average time per mmul call in milliseconds
 
 #include <cstdlib>
 #include <cublas_v2.h>
@@ -19,12 +19,13 @@
 #include "mmul.h"
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " n" << std::endl;
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " n n_tests" << std::endl;
         return 1;
     }
 
-    const int n = std::atoi(argv[1]);
+    const int n       = std::atoi(argv[1]);
+    const int n_tests = std::atoi(argv[2]);
     const size_t size = static_cast<size_t>(n) * n;
 
     // Create cuBLAS handle
@@ -37,22 +38,24 @@ int main(int argc, char *argv[]) {
     cudaMallocManaged(&B, size * sizeof(float));
     cudaMallocManaged(&C, size * sizeof(float));
 
-    // Fill A and B with uniform random floats in [-1, 1]; C starts at zero
+    // Fill A, B, and C with uniform random floats in [-1, 1]
     std::mt19937 gen(759);
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (size_t i = 0; i < size; i++) {
         A[i] = dist(gen);
         B[i] = dist(gen);
-        C[i] = 0.0f;
+        C[i] = dist(gen);
     }
 
-    // Time the mmul call (includes cudaDeviceSynchronize inside mmul)
+    // Time n_tests calls to mmul; report average
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 
-    mmul(handle, A, B, C, n);
+    for (int t = 0; t < n_tests; t++) {
+        mmul(handle, A, B, C, n);
+    }
 
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -60,9 +63,7 @@ int main(int argc, char *argv[]) {
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
 
-    // Print last element then timing
-    std::cout << C[size - 1] << "\n";
-    std::cout << ms << "\n";
+    std::cout << ms / n_tests << "\n";
 
     cublasDestroy(handle);
     cudaFree(A);
