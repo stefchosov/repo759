@@ -23,7 +23,7 @@ echo "# n time_ms (t0+t1)" > "$OUT"
 
 for exp in $(seq 1 25); do
     n=$((1 << exp))
-    time_ms=$(srun -n 2 ./task3 "$n")
+    time_ms=$(mpirun -n 2 ./task3 "$n")
     echo "$n $time_ms" >> "$OUT"
     echo "n=$n done: ${time_ms} ms"
 done
