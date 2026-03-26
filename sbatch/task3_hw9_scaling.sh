@@ -5,7 +5,7 @@
 #SBATCH -e hw9_task3_scaling_%j.err
 #SBATCH -t 0-00:30:00
 #SBATCH --mem=8G
-#SBATCH --ntasks=1
+#SBATCH --ntasks=2
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=2
 
