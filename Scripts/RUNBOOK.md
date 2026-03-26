@@ -318,3 +318,102 @@ g++ task3.cpp msort.cpp      -Wall -O3 -std=c++17 -o task3 -fopenmp
 | Speedup < 1 at t=2 | NUMA effects or small n | Try larger n |
 | task3 crashes | n too large for stack | Already uses heap (`new int[n]`) — check memory limit |
 | Wrong sort order | threshold=1 causes degenerate recursion | Use ts ≥ 2 |
+
+---
+
+---
+
+# HW09 Runbook
+
+OpenMP false-sharing, SIMD, and MPI point-to-point assignment.
+
+---
+
+## Directory layout
+
+```
+repo759/
+├── HW09/
+│   ├── cluster.h        # provided
+│   ├── cluster.cpp      # provided (modified to fix false sharing)
+│   ├── montecarlo.h     # provided
+│   ├── convolve.h       # provided (bonus only)
+│   ├── convolve.cpp     # provided (bonus only)
+│   ├── montecarlo.cpp   # Monte Carlo π with #pragma omp parallel for simd
+│   ├── task1.cpp        # harness: cluster, args: n t
+│   ├── task2.cpp        # harness: montecarlo, args: n t
+│   └── task3.cpp        # MPI ping-pong, args: n
+├── sbatch/
+│   ├── task1_hw9.sh
+│   ├── task1_hw9_scaling.sh
+│   ├── task2_hw9_scaling.sh
+│   └── task3_hw9_scaling.sh
+└── Scripts/
+    ├── plot_hw9_task1.py
+    ├── plot_hw9_task2.py
+    └── plot_hw9_task3.py
+```
+
+## Key differences from HW08
+
+- **Task 1 & 2**: `--cpus-per-task=10` (max 10 threads)
+- **Task 3 (MPI)**: `--ntasks-per-node=2`, no `--cpus-per-task`; requires `module load mpi/mpich/4.0.2`
+- **task2**: compiles two binaries (simd and nosimd) — handled inside the sbatch script
+
+## Step-by-step
+
+### Step 1 — Run scaling studies on Euler
+
+```bash
+git pull
+
+# Task 1: cluster, n=5040000, t=1..10 (10-run average)
+sbatch sbatch/task1_hw9_scaling.sh    # → HW09/scaling_task1.dat
+
+# Task 2: montecarlo, n=10^6, t=1..10, both simd and nosimd
+sbatch sbatch/task2_hw9_scaling.sh    # → HW09/scaling_task2_simd.dat
+                                       #    HW09/scaling_task2_nosimd.dat
+
+# Task 3: MPI ping-pong, n=2^1..2^25
+sbatch sbatch/task3_hw9_scaling.sh   # → HW09/scaling_task3.dat
+```
+
+### Step 2 — scp data files locally
+
+```bash
+scp sarsov@euler.engr.wisc.edu:repo759/HW09/*.dat HW09/
+```
+
+### Step 3 — Generate plots
+
+```bash
+python3 Scripts/plot_hw9_task1.py   # → HW09/task1.pdf
+python3 Scripts/plot_hw9_task2.py   # → HW09/task2.pdf
+python3 Scripts/plot_hw9_task3.py   # → HW09/task3.pdf
+```
+
+### Step 4 — Written answers (assignment9.txt)
+
+Written questions (kept local, gitignored):
+- **Task 3b**: estimate latency and bandwidth from the log-log plot; discuss match
+  with Euler hardware. Latency ≈ y-intercept (small-n flat region). Bandwidth ≈
+  slope of the linear region (large n): bandwidth = (2 * n * sizeof(float)) / time.
+
+## Compilation reference (from HW09/)
+
+```bash
+g++ task1.cpp cluster.cpp -Wall -O3 -std=c++17 -o task1 -fopenmp
+g++ task2.cpp montecarlo.cpp -Wall -O3 -std=c++17 -o task2_simd \
+    -fopenmp -fno-tree-vectorize -march=native
+g++ task2.cpp montecarlo.cpp -DNOSIMD -Wall -O3 -std=c++17 -o task2_nosimd \
+    -fopenmp -fno-tree-vectorize -march=native
+mpicxx task3.cpp -Wall -O3 -o task3   # needs: module load mpi/mpich/4.0.2
+```
+
+## Common issues
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| task2 simd no speedup | `-fno-tree-vectorize` suppresses auto-vec; check `-fopt-info-vec` output | Confirm simd pragma is present |
+| task3 hangs | srun must be used in slurm, not mpirun interactively | Always submit via sbatch |
+| Wrong dists output | n not multiple of 2*t | Use n=5040000 (divisible by 20) |
