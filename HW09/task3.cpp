@@ -42,7 +42,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < n; i++) buf_send[i] = static_cast<float>(i);
 
     MPI_Status status;
-    double elapsed = 0.0;
 
     if (rank == 0) {
         double t0_start = MPI_Wtime();

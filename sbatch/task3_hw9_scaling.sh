@@ -12,7 +12,7 @@
 # Scaling study for HW09 Task 3: MPI ping-pong, n=2^1..2^25
 # Output: HW09/scaling_task3.dat  (columns: n  time_ms)
 
-module load mpi/mpich/4.0.2
+module load nvidia/nvhpc-openmpi3/24.5
 
 cd "${SLURM_SUBMIT_DIR%/sbatch}/HW09"
 
