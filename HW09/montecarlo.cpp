@@ -1,3 +1,7 @@
+// Code generated with assistance from Claude Code (Anthropic CLI)
+// Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
+// Usage: Implementation based on problem specification from HW09.pdf
+
 #include "montecarlo.h"
 
 // Returns the number of (x[i], y[i]) points that lie inside the circle of

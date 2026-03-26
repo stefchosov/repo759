@@ -1,3 +1,7 @@
+// Code generated with assistance from Claude Code (Anthropic CLI)
+// Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
+// Usage: Implementation based on problem specification from HW09.pdf
+
 // HW09 Task 1: OpenMP false-sharing study — cluster distance computation.
 // Usage: ./task1 n t
 //   n -- length of the arr array (must be a multiple of 2*t)

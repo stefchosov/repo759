@@ -1,3 +1,7 @@
+// Code generated with assistance from Claude Code (Anthropic CLI)
+// Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
+// Usage: Implementation based on problem specification from HW09.pdf
+
 // HW09 Task 3: MPI point-to-point latency and bandwidth measurement.
 // Usage: srun -n 2 ./task3 n
 //   n -- number of floats in each message buffer

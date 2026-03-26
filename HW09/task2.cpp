@@ -1,3 +1,7 @@
+// Code generated with assistance from Claude Code (Anthropic CLI)
+// Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
+// Usage: Implementation based on problem specification from HW09.pdf
+
 // HW09 Task 2: Monte Carlo π estimation with OpenMP (with and without simd).
 // Usage: ./task2 n t
 //   n -- number of random 2D points
