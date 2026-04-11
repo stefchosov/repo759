@@ -3,18 +3,14 @@
 # Usage: Final project — Task 1 throughput comparison plot
 #
 # Reads:
-#   Final/Data/scaling_task1_cpu.dat  (serial + OpenMP)
-#   Final/Data/scaling_task1_gpu.dat  (GPU — optional, skipped if absent)
+#   Final/Data/task1/scaling_task1.dat
+#     columns: n  md5_serial_ms  md5_omp_ms  md5_gpu_ms
+#              sha1_serial_ms  sha1_omp_ms  sha1_gpu_ms
+#              sha256_serial_ms  sha256_omp_ms  sha256_gpu_ms
 #
 # Produces:
-#   Final/Data/task1_throughput.pdf
-#   Final/Data/task1_throughput.png
-#
-# Graph: grouped bar chart (log-scale y-axis)
-#   X: algorithm (MD5, SHA-1, SHA-256)
-#   Groups: Serial / OpenMP / GPU
-#   Y: throughput in MH/s  (log scale — covers 3 orders of magnitude)
-#   Evaluated at the largest n in the dat file.
+#   Final/Data/task1/task1_throughput.pdf
+#   Final/Data/task1/task1_throughput.png
 
 import os
 import sys
@@ -23,55 +19,43 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-CPU_DAT  = "Final/Data/scaling_task1_cpu.dat"
-GPU_DAT  = "Final/Data/scaling_task1_gpu.dat"
-OUT_PDF  = "Final/Data/task1_throughput.pdf"
-OUT_PNG  = "Final/Data/task1_throughput.png"
+DAT     = "Final/Data/task1/scaling_task1.dat"
+OUT_PDF = "Final/Data/task1/task1_throughput.pdf"
+OUT_PNG = "Final/Data/task1/task1_throughput.png"
 
-# ── load CPU data ─────────────────────────────────────────────────────────────
+if not os.path.exists(DAT):
+    sys.exit(f"ERROR: {DAT} not found. Run task1_final_scaling.sh first.")
 
-if not os.path.exists(CPU_DAT):
-    sys.exit(f"ERROR: {CPU_DAT} not found. Run task1_final_scaling.sh first.")
-
-cpu_data = np.loadtxt(CPU_DAT, comments="#")
-if cpu_data.ndim == 1:
-    cpu_data = cpu_data.reshape(1, -1)
+data = np.loadtxt(DAT, comments="#")
+if data.ndim == 1:
+    data = data.reshape(1, -1)
 
 # Use the row with the largest n for the bar chart
-row = cpu_data[np.argmax(cpu_data[:, 0])]
+row    = data[np.argmax(data[:, 0])]
 n_best = row[0]
 
-# columns: n  md5_serial  md5_omp  sha1_serial  sha1_omp  sha256_serial  sha256_omp
-md5_serial_ms,  md5_omp_ms  = row[1], row[2]
-sha1_serial_ms, sha1_omp_ms = row[3], row[4]
-s256_serial_ms, s256_omp_ms = row[5], row[6]
+# columns: n  md5_s md5_o md5_g  sha1_s sha1_o sha1_g  s256_s s256_o s256_g
+md5_s,  md5_o,  md5_g  = row[1], row[2], row[3]
+sha1_s, sha1_o, sha1_g = row[4], row[5], row[6]
+s256_s, s256_o, s256_g = row[7], row[8], row[9]
 
 def throughput(n, ms):
-    """hashes per second → MH/s"""
+    """hashes/sec → MH/s"""
     return (n / (ms / 1000.0)) / 1e6
 
 thr = {
-    "MD5":    {"Serial": throughput(n_best, md5_serial_ms),
-               "OpenMP": throughput(n_best, md5_omp_ms)},
-    "SHA-1":  {"Serial": throughput(n_best, sha1_serial_ms),
-               "OpenMP": throughput(n_best, sha1_omp_ms)},
-    "SHA-256":{"Serial": throughput(n_best, s256_serial_ms),
-               "OpenMP": throughput(n_best, s256_omp_ms)},
+    "MD5":    {"Serial": throughput(n_best, md5_s),
+               "OpenMP": throughput(n_best, md5_o),
+               "GPU":    throughput(n_best, md5_g)},
+    "SHA-1":  {"Serial": throughput(n_best, sha1_s),
+               "OpenMP": throughput(n_best, sha1_o),
+               "GPU":    throughput(n_best, sha1_g)},
+    "SHA-256":{"Serial": throughput(n_best, s256_s),
+               "OpenMP": throughput(n_best, s256_o),
+               "GPU":    throughput(n_best, s256_g)},
 }
 
-# ── load GPU data (optional) ──────────────────────────────────────────────────
-
-has_gpu = os.path.exists(GPU_DAT)
-if has_gpu:
-    gpu_data = np.loadtxt(GPU_DAT, comments="#")
-    if gpu_data.ndim == 1:
-        gpu_data = gpu_data.reshape(1, -1)
-    grow = gpu_data[np.argmax(gpu_data[:, 0])]
-    # columns: n  md5_gpu_ms  sha1_gpu_ms  sha256_gpu_ms
-    gn = grow[0]
-    thr["MD5"]["GPU"]     = throughput(gn, grow[1])
-    thr["SHA-1"]["GPU"]   = throughput(gn, grow[2])
-    thr["SHA-256"]["GPU"] = throughput(gn, grow[3])
+has_gpu = True  # always present in combined dat
 
 # ── plot ──────────────────────────────────────────────────────────────────────
 
@@ -118,7 +102,7 @@ ax.set_axisbelow(True)
 fig.tight_layout()
 fig.savefig(OUT_PDF, dpi=150)
 fig.savefig(OUT_PNG, dpi=150)
-print(f"Saved {OUT_PDF}")
+print(f"Saved  {OUT_PDF}")
 print(f"Saved {OUT_PNG}")
 
 # ── print speedup table ───────────────────────────────────────────────────────
