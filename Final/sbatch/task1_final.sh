@@ -17,7 +17,7 @@
 #   <sha256_check> <sha256_serial_ms> <sha256_omp_ms>
 
 set -e
-cd "$SLURM_SUBMIT_DIR"
+cd "$(git -C "$SLURM_SUBMIT_DIR" rev-parse --show-toplevel)"
 
 N=${1:-10000000}
 T=${2:-20}

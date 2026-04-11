@@ -16,7 +16,7 @@
 # merged by the plot script.
 
 set -e
-cd "$SLURM_SUBMIT_DIR"
+cd "$(git -C "$SLURM_SUBMIT_DIR" rev-parse --show-toplevel)"
 
 T=20
 OUTFILE=Final/Data/scaling_task1_cpu.dat

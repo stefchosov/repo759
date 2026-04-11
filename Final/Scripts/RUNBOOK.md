@@ -125,8 +125,11 @@ Sanity checks:
 
 ### Step 5 — Submit the scaling study
 
+The scripts use `git rev-parse --show-toplevel` to find the repo root, so
+sbatch can be submitted from any directory inside the repo:
+
 ```bash
-sbatch Final/sbatch/task1_final_scaling.sh
+sbatch ~/repo759/Final/sbatch/task1_final_scaling.sh
 ```
 
 This sweeps n = 100 K → 100 M with t=20 threads and writes:
