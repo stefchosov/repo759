@@ -1,0 +1,107 @@
+Task 1 Analysis — CPU vs GPU Hash Throughput
+ME759 Final Project — Stefan Arsov — Spring 2026
+=====================================================
+
+1. Overview
+-----------
+Task 1 measures throughput (hashes/second) for MD5, SHA-1, and SHA-256
+across three execution modes: single-threaded CPU (serial), OpenMP CPU
+(4 threads), and CUDA GPU. Each hash receives a unique 8-byte input
+(the hash index encoded as a little-endian uint64_t). Experiments ran
+on the UW-Madison Euler cluster (instruction partition, 1 GPU, 4 CPU cores).
+
+
+2. Throughput Results (n = 10,000,000)
+---------------------------------------
+
+Algorithm   Serial (MH/s)   OpenMP-4 (MH/s)   GPU (MH/s)
+---------   -------------   ---------------   ----------
+MD5               6.53             22.73         2694.6
+SHA-1             2.78              9.34         1224.8
+SHA-256           3.94              9.54          658.9
+
+
+3. Speedup Over Serial (n = 10,000,000)
+-----------------------------------------
+
+Algorithm   OpenMP-4 speedup   GPU speedup
+---------   ----------------   -----------
+MD5                  3.48x          413x
+SHA-1                3.36x          440x
+SHA-256              2.42x          167x
+
+
+4. GPU Throughput vs. n (MD5)
+------------------------------
+At small n, GPU throughput is suppressed by kernel launch overhead.
+As n grows the thousands of GPU threads are fully utilized.
+
+    n          GPU MH/s
+    ------     --------
+    100,000        4.9    ← slower than serial (6.5 MH/s)
+    500,000      511.9
+  1,000,000      738.0
+  5,000,000    2,224.4
+ 10,000,000    2,694.6
+
+The GPU breaks even with serial around n ≈ 150,000–200,000 for MD5.
+Below this threshold, kernel launch latency (~2 ms) dominates. Above
+it, the GPU exploits thread-level parallelism across thousands of
+independent hash computations.
+
+
+5. Discussion
+-------------
+
+5a. GPU vs CPU speedup
+The GPU achieves 167–440x speedup over serial depending on the
+algorithm. This large margin is expected: cryptographic hash functions
+are embarrassingly parallel (each hash is independent) and consist
+entirely of bitwise and integer arithmetic, which maps efficiently
+onto GPU SIMD execution. There is no inter-thread communication or
+synchronization overhead.
+
+5b. Algorithm ordering on CPU (serial)
+MD5 is the fastest CPU implementation (6.53 MH/s), followed by SHA-256
+(3.94 MH/s) and SHA-1 (2.78 MH/s). SHA-1 being slower than SHA-256 on
+CPU is counterintuitive given that SHA-256 has more complex round
+operations. The likely cause is SHA-1's larger message schedule array
+(W[80] = 320 bytes per call) versus SHA-256's W[64] (256 bytes), which
+increases register pressure and causes more spilling to the stack,
+hurting instruction throughput on a single core.
+
+5c. Algorithm ordering on GPU
+The GPU ordering is MD5 > SHA-1 > SHA-256, consistent with algorithmic
+complexity: MD5 has fewer and simpler operations per hash, allowing
+higher occupancy and fewer register conflicts. SHA-256 uses 9 timing
+columns of operations per round (S0, S1, Ch, Maj, etc.) and a 64-entry
+message schedule, which consumes more registers per thread and reduces
+the number of warps the SM can keep in flight.
+
+SHA-256 GPU speedup (167x) is notably lower than MD5 (413x) and SHA-1
+(440x) for this reason — more register pressure limits occupancy.
+
+5d. OpenMP scaling
+OpenMP achieves 3.4–3.5x speedup with 4 threads for MD5 and SHA-1,
+close to the theoretical linear speedup of 4x. This indicates the
+problem is compute-bound and scales well across cores with no shared
+state (each thread operates on independent inputs and stack-allocated
+digest buffers). SHA-256 reaches only 2.42x, again reflecting higher
+per-thread register/memory pressure reducing effective parallelism.
+
+5e. GPU overhead at small n
+At n = 100,000, GPU MD5 throughput (4.9 MH/s) falls below serial
+(6.5 MH/s). The fixed kernel launch cost (~2 ms) and device
+initialization overhead dominate at this scale. This overhead becomes
+negligible as n grows and the batch amortizes it across millions of
+independent threads.
+
+
+6. Summary
+----------
+The GPU provides massive throughput advantages for large-batch hashing
+(400x+ for MD5 and SHA-1). For small batches (n < ~200,000), the CPU
+is competitive or faster due to kernel launch overhead. Algorithm
+complexity directly determines GPU occupancy and thus throughput, with
+simpler algorithms (MD5) benefiting most. OpenMP provides near-linear
+scaling for low-register-pressure algorithms at modest thread counts.
