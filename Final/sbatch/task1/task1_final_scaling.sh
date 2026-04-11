@@ -28,7 +28,7 @@ echo "Host: $(hostname)"
 
 module load nvidia/cuda/12.0 2>/dev/null || true
 
-nvcc -O3 -std=c++17 -Xcompiler -fopenmp \
+nvcc -O3 -std=c++17 -allow-unsupported-compiler -Xcompiler -fopenmp \
     -o Final/task1 \
     Final/Code/task1.cu \
     Final/Code/md5.cu \
