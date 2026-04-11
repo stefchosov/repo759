@@ -26,9 +26,13 @@ OUTFILE=Final/Data/task1/scaling_task1.dat
 echo "=== Task 1 scaling (t=$T, tpb=$TPB) — $(date) ==="
 echo "Host: $(hostname)"
 
+module load nvidia/cuda/12.5 2>/dev/null || \
+module load nvidia/cuda/12.3 2>/dev/null || \
+module load nvidia/cuda/12.2 2>/dev/null || \
 module load nvidia/cuda/12.0 2>/dev/null || true
+echo "CUDA: $(nvcc --version 2>/dev/null | grep release || echo 'not found')"
 
-nvcc -O3 -std=c++17 -allow-unsupported-compiler -Xcompiler -fopenmp \
+nvcc -O3 -std=c++17 -Xcompiler -fopenmp \
     -o Final/task1 \
     Final/Code/task1.cu \
     Final/Code/md5.cu \
