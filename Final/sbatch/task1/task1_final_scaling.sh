@@ -3,22 +3,23 @@
 #SBATCH -J task1_final_scaling
 #SBATCH -o Final/sbatch/task1/logs/task1_final_scaling_%j.out
 #SBATCH -t 0-00:30:00
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --mem=8G
 
-# Scaling study for Task 1 — varies n, fixed t=20, tpb=256.
+# Scaling study for Task 1 — varies n, fixed t=4, tpb=256.
 # Produces: Final/Data/task1/scaling_task1.dat
 #
 # Columns:
 #   n  md5_serial_ms  md5_omp_ms  md5_gpu_ms
 #   sha1_serial_ms  sha1_omp_ms  sha1_gpu_ms
 #   sha256_serial_ms  sha256_omp_ms  sha256_gpu_ms
+# Note: --cpus-per-task=4 to fit GPU nodes in the instruction partition.
 
 set -e
 cd "$(git -C "$SLURM_SUBMIT_DIR" rev-parse --show-toplevel)"
 
-T=20
+T=4
 TPB=256
 OUTFILE=Final/Data/task1/scaling_task1.dat
 
