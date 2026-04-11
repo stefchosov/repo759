@@ -24,7 +24,7 @@ TPB=${3:-256}
 echo "=== Task 1 — serial + OpenMP + GPU (n=$N, t=$T, tpb=$TPB) ==="
 echo "Host: $(hostname)  Cores: $SLURM_CPUS_PER_TASK"
 
-module load nvidia/cuda/12.5.0
+module load nvidia/cuda/13.0.0
 echo "CUDA: $(nvcc --version | grep release)"
 
 nvcc -O3 -std=c++17 -Xcompiler -fopenmp \
