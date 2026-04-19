@@ -138,11 +138,13 @@ eliminates memory scaling entirely. CPU approaches, no matter how well
 parallelized, must touch O(2^(N/2)) memory to detect collisions via the
 birthday paradox, making them memory-bandwidth-bound at scale.
 
-GPU Extension to bits=72 and bits=80
---------------------------------------
-To further demonstrate GPU-only scaling, the benchmark extends to bits=72 and
-bits=80 — ranges where no CPU implementation is feasible. This required a
-128-bit arithmetic extension to the GPU code (uint64_t maxes at 64 bits):
+GPU Extension to bits=72
+-------------------------
+To further demonstrate GPU-only scaling, the benchmark extends to bits=72 —
+a range where no CPU implementation is feasible. bits=80 would require ~30
+minutes of GPU time alone and exceeds the 40-minute partition wall-clock limit
+when combined with the CPU/OMP runs. This required a 128-bit arithmetic
+extension to the GPU code (uint64_t maxes at 64 bits):
 
   - uint128 struct (lo/hi pair of uint64_t) for chain values and DP entries
   - Wide hash functions (md5_128, sha1_128, sha256_128) accepting 16-byte
@@ -151,10 +153,10 @@ bits=80 — ranges where no CPU implementation is feasible. This required a
   - gpu_collision dispatches to the wide path automatically for bits > 64
 
 Expected GPU times (relative to bits=64):
-  bits=72: ~16× longer  → ~2 minutes
-  bits=80: ~256× longer → ~30 minutes
-  bits=88: ~4096× longer → ~8 hours (infeasible within job time limits)
-  bits=96: ~65536× longer → ~5 days (completely infeasible)
+  bits=72: ~16× longer  → ~2 minutes  ✓ within 40-min limit
+  bits=80: ~256× longer → ~30 minutes ✗ exceeds partition wall-clock limit
+  bits=88: ~4096× longer → ~8 hours   ✗ infeasible
+  bits=96: ~65536× longer → ~5 days   ✗ infeasible
 
 The data at bits=72 and bits=80 extend the speedup curve well beyond what any
 CPU implementation could reach, providing clear empirical evidence that the

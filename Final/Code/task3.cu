@@ -626,8 +626,8 @@ static uint64_t omp_collision(int algo, int bits, double *ms_out) {
 
 int main(int argc, char *argv[]) {
     static const char *algo_names[] = {"md5", "sha1", "sha256"};
-    static const int   bits_arr[]   = {16, 24, 32, 40, 48, 56, 64, 72, 80};
-    static const int   N_BITS       = 9;
+    static const int   bits_arr[]   = {16, 24, 32, 40, 48, 56, 64, 72};
+    static const int   N_BITS       = 8;
 
     int a0 = 0, a1 = 3, b0 = 0, b1 = N_BITS;
     if (argc >= 2) {
