@@ -81,17 +81,47 @@ this sweet spot:
 All three scaling sbatch scripts therefore fix OMP_NUM_THREADS=12 and request
 --cpus-per-task=12 to stay on a single socket and avoid NUMA penalties.
 
+Why bits=64 Is CPU-Infeasible (And What It Would Take)
+-------------------------------------------------------
+bits=64 expects ~2.7 billion entries before a collision. The current
+unordered_map implementation requires:
+
+  Memory:  ~100–110 GB (bucket array ~22 GB + node storage ~65 GB)
+  Time:    hashing ~1 second (12 threads × 200M MD5/s), but the serial
+           merge phase performs 2.7B random memory accesses across 100 GB —
+           at ~100 ns DRAM latency each that is ~270 seconds of map ops alone.
+           Total wall time: ~5 minutes even with sufficient memory.
+
+A hypothetical optimized CPU implementation (parallel sort-based) would reduce
+both constraints significantly:
+
+  1. Replace unordered_map with a flat (hash, index) pair array.
+     Memory drops to ~43 GB (2.7B × 16 bytes) — fits on a high-memory server.
+
+  2. Parallel radix sort the array after Phase 1 hashing.
+     Phase 1 (hashing):  ~1 s  (12 threads, embarrassingly parallel)
+     Phase 2 (sort):     ~10–20 s  (parallel radix sort, cache-friendly)
+     Phase 3 (scan):     ~1 s  (linear scan for adjacent duplicates)
+     Total:              ~20–30 s on a 12-core machine with 64 GB RAM.
+
+Even with this optimization, the GPU Pollard's rho completes bits=64 in
+single-digit seconds using only 8 MB of device memory. The GPU advantage at
+high bit counts is therefore algorithmic, not just clock speed: Pollard's rho
+eliminates memory scaling entirely. CPU approaches, no matter how well
+parallelized, must touch O(2^(N/2)) memory to detect collisions via the
+birthday paradox, making them memory-bandwidth-bound at scale.
+
 GPU vs CPU Speedup
 ------------------
 The GPU outperforms both CPU implementations for all bit widths ≥ 32. The
 speedup grows with bits because:
-  - GPU work scales with the hash space (more threads = more parallelism)
   - CPU serial time grows as 2^(N/2) with no additional parallelism
-  - The Pollard's rho algorithm on the GPU amortizes chain-walking overhead
-    across 65,536 simultaneous walkers
+  - OpenMP speedup is capped by the serial merge phase (Amdahl) and NUMA
+  - The GPU runs 65,536 Pollard chains simultaneously with O(1) memory each,
+    so its effective work per second scales independently of the hash space size
 
-For bits=64, only the GPU runs. The CPU (serial or OpenMP) would require ~2^32
-entries in the map, exhausting available system memory.
+For bits=56 and bits=64, only the GPU produces results within the job time
+and memory constraints available on Euler.
 
 Truncated Hash Extraction
 --------------------------
