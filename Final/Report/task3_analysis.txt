@@ -92,6 +92,16 @@ unordered_map implementation requires:
            at ~100 ns DRAM latency each that is ~270 seconds of map ops alone.
            Total wall time: ~5 minutes even with sufficient memory.
 
+Why OpenMP Does Not Help at bits=64
+-------------------------------------
+OpenMP parallelizes Phase 1 (hashing) only — Phase 2 (map insertion) remains
+entirely serial. At bits=64 the map itself requires ~100 GB regardless of how
+many threads are hashing. More threads in Phase 1 cannot reduce the memory
+footprint or the serial merge cost; the bottleneck shifts from compute to
+memory capacity and DRAM latency. CPU_MAX_BITS=56 therefore gates both the
+serial and OpenMP implementations equally — they share the same unordered_map
+and the same memory constraint.
+
 A hypothetical optimized CPU implementation (parallel sort-based) would reduce
 both constraints significantly:
 
