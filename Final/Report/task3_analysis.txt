@@ -16,8 +16,23 @@ collision in an N-bit hash space is:
     E[collisions] ≈ sqrt(π/2) × 2^(N/2)
 
 This grows as 2^(N/2), so each additional 8 bits doubles the required work twice
-(4× harder). The serial CPU runs are validated against this expectation; ratios
-near 1.0 confirm correct implementation.
+(4× harder).
+
+The CPU serial implementation validates this directly: cpu_count is the number
+of distinct inputs evaluated before the first collision is found. Across all
+algorithms and bit widths, cpu_count / expected is consistently close to 1.0,
+confirming that the truncated hash extraction is correct and the output
+distribution is sufficiently uniform for the birthday paradox to hold.
+
+The gpu_count column is NOT comparable to expected. It measures total hash
+iterations across all 65,536 Pollard's rho threads across all kernel launches —
+every thread walks its full chain length regardless of when a collision is
+detected. At bits=32 for example, a single launch computes 65,536 × 1,024 =
+67M hash evaluations while expected is only ~82K. gpu_count is therefore orders
+of magnitude larger than expected by design; it is useful only for computing
+GPU throughput (hashes/second), not for birthday paradox validation. The
+meaningful performance comparison between CPU and GPU is time (cpu_ms vs
+gpu_ms), not count.
 
 GPU Algorithm — Pollard's Rho with Distinguished Points
 ---------------------------------------------------------
