@@ -40,9 +40,9 @@ CPU Serial Algorithm
 --------------------
 Sequential scan of inputs 0, 1, 2, ... hashing each and inserting into an
 std::unordered_map<uint64_t, uint64_t>. The first duplicate key is a collision.
-Run for bits ≤ 48; bits=56 requires ~420M map entries (~15–17 GB with node
-overhead) which exhausts the 16 GB SLURM memory limit. bits=64 is not feasible
-on any available CPU. Both sizes are reported as -1 and run only on GPU.
+Run for bits ≤ 56; bits=56 requires ~420M map entries (~15–17 GB with node
+overhead) and is accommodated by requesting 96 GB SLURM memory. bits=64 is not
+feasible on any available CPU and is reported as -1, running only on GPU.
 
 OpenMP Parallel Algorithm — Thread Count Choice
 ------------------------------------------------

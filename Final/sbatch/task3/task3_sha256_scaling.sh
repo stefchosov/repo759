@@ -5,7 +5,7 @@
 #SBATCH -t 0-00:40:00
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
-#SBATCH --mem=16G
+#SBATCH --mem=96G
 
 # Task 3 scaling — SHA-256, bits in {16,24,32,40,48,56,64}
 # CPU serial + OpenMP 12-thread (single-socket sweet spot) for bits <= 56; GPU for all bits.
