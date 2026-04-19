@@ -46,16 +46,17 @@ for algo, path in DAT_FILES.items():
             bits     = int(parts[1])
             cpu_cnt  = int(parts[2])    # -1 if not run
             cpu_ms   = float(parts[3])  # -1.0 if not run
-            gpu_ms   = float(parts[4])
-            expected = int(parts[5])
-            rows.append((a, bits, cpu_cnt, cpu_ms, gpu_ms, expected))
+            gpu_cnt  = int(parts[4])
+            gpu_ms   = float(parts[5])
+            expected = int(parts[6])
+            rows.append((a, bits, cpu_cnt, cpu_ms, gpu_cnt, gpu_ms, expected))
 
 algos  = ["md5", "sha1", "sha256"]
 labels = {"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256"}
 colors = {"md5": "#4c72b0", "sha1": "#dd8452", "sha256": "#55a868"}
 
 def get(algo, field):
-    idx = {"bits":1,"cpu_cnt":2,"cpu_ms":3,"gpu_ms":4,"expected":5}[field]
+    idx = {"bits":1,"cpu_cnt":2,"cpu_ms":3,"gpu_cnt":4,"gpu_ms":5,"expected":6}[field]
     return [(r[1], r[idx]) for r in rows if r[0] == algo]
 
 def valid_cpu(algo):
@@ -158,11 +159,11 @@ print("Saved Final/Data/task3/task3_speedup.pdf")
 plt.close(fig)
 
 # ── Summary table ─────────────────────────────────────────────────────────────
-print(f"\n{'algo':>8}  {'bits':>4}  {'cpu_cnt':>12}  {'expected':>12}  "
+print(f"\n{'algo':>8}  {'bits':>4}  {'cpu_cnt':>12}  {'gpu_cnt':>12}  {'expected':>12}  "
       f"{'ratio':>6}  {'cpu_ms':>9}  {'gpu_ms':>9}  {'speedup':>9}")
 for r in rows:
-    algo, bits, cpu_cnt, cpu_ms, gpu_ms, expected = r
+    algo, bits, cpu_cnt, cpu_ms, gpu_cnt, gpu_ms, expected = r
     ratio   = cpu_cnt / expected if cpu_cnt >= 0 else float("nan")
     speedup = cpu_ms  / gpu_ms   if cpu_ms  >= 0 and gpu_ms > 0 else float("nan")
-    print(f"{algo:>8}  {bits:>4}  {cpu_cnt:>12}  {expected:>12}  "
+    print(f"{algo:>8}  {bits:>4}  {cpu_cnt:>12}  {gpu_cnt:>12}  {expected:>12}  "
           f"{ratio:>6.2f}  {cpu_ms:>9.3f}  {gpu_ms:>9.3f}  {speedup:>9.1f}x")

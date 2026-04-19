@@ -37,7 +37,7 @@
 #include "sha1_cpu.h"
 #include "sha256_cpu.h"
 
-static constexpr int CPU_MAX_BITS = 56;
+static constexpr int CPU_MAX_BITS = 48;
 
 // ── GPU constant memory ──────────────────────────────────────────────────────
 
@@ -231,7 +231,7 @@ __global__ void pollard_kernel(
 
 // ── GPU collision search (Pollard's rho) ──────────────────────────────────────
 
-static void gpu_collision(int algo, int bits, float *ms_out) {
+static void gpu_collision(int algo, int bits, float *ms_out, uint64_t *count_out) {
     // dp_bits = bits/4: expected chain length 2^dp_bits, expected DPs before
     //   collision = sqrt(pi/2) * 2^(bits/4) << dp_buf capacity.
     const int      dp_bits       = bits / 4;
@@ -255,6 +255,7 @@ static void gpu_collision(int algo, int bits, float *ms_out) {
     uint64_t chain_offset = 0;
     bool     found        = false;
     int      blocks       = (int)(n_threads / tpb);
+    *count_out            = 0;
 
     cudaEvent_t ev0, ev1;
     cudaEventCreate(&ev0);
@@ -292,7 +293,8 @@ static void gpu_collision(int algo, int bits, float *ms_out) {
             }
         }
 
-        chain_offset += n_threads << 3;  // advance past used chain slots
+        *count_out   += n_threads * iters_per_thr;
+        chain_offset += n_threads << 3;
     }
 
     cudaEventRecord(ev1);
@@ -359,7 +361,7 @@ int main(int argc, char *argv[]) {
             if (bits_arr[bi] == bv) { b0 = bi; b1 = bi + 1; }
     }
 
-    printf("# algo  bits  cpu_count  cpu_ms  gpu_ms  expected\n");
+    printf("# algo  bits  cpu_count  cpu_ms  gpu_count  gpu_ms  expected\n");
 
     for (int a = a0; a < a1; a++) {
         for (int bi = b0; bi < b1; bi++) {
@@ -372,12 +374,14 @@ int main(int argc, char *argv[]) {
                 cpu_cnt = (int64_t)cpu_collision(a, bits, &cpu_ms);
             }
 
-            float gpu_ms = 0.0f;
-            gpu_collision(a, bits, &gpu_ms);
+            float    gpu_ms  = 0.0f;
+            uint64_t gpu_cnt = 0;
+            gpu_collision(a, bits, &gpu_ms, &gpu_cnt);
 
-            printf("%s %d %lld %.3f %.3f %llu\n",
+            printf("%s %d %lld %.3f %llu %.3f %llu\n",
                    algo_names[a], bits,
-                   (long long)cpu_cnt, cpu_ms, gpu_ms,
+                   (long long)cpu_cnt, cpu_ms,
+                   (unsigned long long)gpu_cnt, gpu_ms,
                    (unsigned long long)expected);
             fflush(stdout);
         }
