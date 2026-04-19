@@ -354,7 +354,7 @@ static uint64_t omp_collision(int algo, int bits, double *ms_out) {
     int      n_thr   = omp_get_max_threads();
 
     uint64_t expected_cnt = (uint64_t)(sqrt(M_PI / 2.0) * pow(2.0, bits / 2.0));
-    uint64_t per_thread   = std::max(1ULL, expected_cnt / 8 / (uint64_t)n_thr);
+    uint64_t per_thread   = std::max((uint64_t)1, expected_cnt / 8 / (uint64_t)n_thr);
     uint64_t batch        = per_thread * (uint64_t)n_thr;
 
     std::unordered_map<uint64_t, uint64_t> seen;
