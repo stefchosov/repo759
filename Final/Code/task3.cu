@@ -1,6 +1,6 @@
 // Code generated with assistance from Claude Code (Anthropic CLI)
 // Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
-// Usage: Final project — Task 3: truncated-collision search (CPU + GPU)
+// Usage: Final project — Task 3: truncated-collision search (CPU serial + OpenMP + GPU)
 //
 // GPU algorithm: Pollard's rho with distinguished points.
 //   Each thread walks an independent chain x_{n+1} = truncate(hash(x_n)).
@@ -9,8 +9,10 @@
 //   collision in the truncated hash function (birthday paradox in the cycle).
 //   Memory: O(1) per thread — scales to bits=64 without GPU memory limits.
 //
-// CPU algorithm: sequential unordered_map scan.
-//   Run for bits <= CPU_MAX_BITS (56); larger sizes reported as -1.
+// CPU algorithms: sequential and OpenMP-parallel unordered_map scan.
+//   Phase 1 (parallel): threads hash disjoint index ranges into per-batch buffers.
+//   Phase 2 (serial): merge into shared map, detect first duplicate.
+//   Run for bits <= CPU_MAX_BITS; larger sizes reported as -1.
 //
 // Truncated hash: first 8 digest bytes as LE uint64, masked to low 'bits' bits.
 //   MD5 (LE output):  bytes 0-7 as LE uint64 = st[0] | (st[1] << 32)
@@ -20,8 +22,8 @@
 //        ./task3 <algo>             — one algo, all 7 bits  (e.g. md5)
 //        ./task3 <algo> <bits>      — single combo           (e.g. sha1 32)
 //
-// Output columns: algo  bits  cpu_count  cpu_ms  gpu_ms  expected
-//   cpu_count / cpu_ms = -1 when bits > CPU_MAX_BITS
+// Output columns: algo  bits  cpu_count  cpu_ms  omp_count  omp_ms  gpu_count  gpu_ms  expected
+//   cpu_count / cpu_ms / omp_count / omp_ms = -1 when bits > CPU_MAX_BITS
 
 #include <cstdint>
 #include <cstdio>
@@ -31,13 +33,14 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <omp.h>
 #include <cuda_runtime.h>
 
 #include "md5_cpu.h"
 #include "sha1_cpu.h"
 #include "sha256_cpu.h"
 
-static constexpr int CPU_MAX_BITS = 48;
+static constexpr int CPU_MAX_BITS = 56;
 
 // ── GPU constant memory ──────────────────────────────────────────────────────
 
@@ -311,9 +314,6 @@ static void gpu_collision(int algo, int bits, float *ms_out, uint64_t *count_out
 
 static uint64_t cpu_collision(int algo, int bits, double *ms_out) {
     uint64_t mask = (bits < 64) ? ((1ull << bits) - 1ull) : ~0ull;
-    // Represent mask as two 32-bit halves for extraction
-    uint32_t mask_lo = (uint32_t)(mask);
-    uint32_t mask_hi = (uint32_t)(mask >> 32);
 
     std::unordered_map<uint64_t, uint64_t> seen;
     seen.reserve(1u << std::min(bits / 2 + 3, 22));
@@ -343,6 +343,60 @@ static uint64_t cpu_collision(int algo, int bits, double *ms_out) {
     }
 }
 
+// ── OpenMP parallel collision search ─────────────────────────────────────────
+// Phase 1 (parallel): n_thr threads each hash their slice of [base, base+batch)
+//   into pre-allocated hbuf / ibuf arrays — no synchronization needed.
+// Phase 2 (serial): merge into global map; stop at first duplicate key.
+// Batch size tracks ~1/8 of the expected collision distance to minimize overshoot.
+
+static uint64_t omp_collision(int algo, int bits, double *ms_out) {
+    uint64_t mask    = (bits < 64) ? ((1ull << bits) - 1ull) : ~0ull;
+    int      n_thr   = omp_get_max_threads();
+
+    uint64_t expected_cnt = (uint64_t)(sqrt(M_PI / 2.0) * pow(2.0, bits / 2.0));
+    uint64_t per_thread   = std::max(1ULL, expected_cnt / 8 / (uint64_t)n_thr);
+    uint64_t batch        = per_thread * (uint64_t)n_thr;
+
+    std::unordered_map<uint64_t, uint64_t> seen;
+    seen.reserve(1u << std::min(bits / 2 + 3, 22));
+
+    std::vector<uint64_t> hbuf(batch), ibuf(batch);
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+
+    uint64_t base  = 0;
+    bool     found = false;
+    uint64_t result = 0;
+
+    while (!found) {
+        #pragma omp parallel for schedule(static)
+        for (int64_t i = 0; i < (int64_t)batch; i++) {
+            uint64_t idx = base + (uint64_t)i;
+            uint8_t  msg[8], digest[32];
+            for (int k = 0; k < 8; k++) msg[k] = (uint8_t)(idx >> (8 * k));
+            if      (algo == 0) md5_cpu(msg, 8, digest);
+            else if (algo == 1) sha1_cpu(msg, 8, digest);
+            else                sha256_cpu(msg, 8, digest);
+            hbuf[(size_t)i] = ((uint64_t)digest[0]          | ((uint64_t)digest[1] <<  8)
+                             | ((uint64_t)digest[2] << 16)   | ((uint64_t)digest[3] << 24)
+                             | ((uint64_t)digest[4] << 32)   | ((uint64_t)digest[5] << 40)
+                             | ((uint64_t)digest[6] << 48)   | ((uint64_t)digest[7] << 56)) & mask;
+            ibuf[(size_t)i] = idx;
+        }
+
+        for (uint64_t i = 0; i < batch && !found; i++) {
+            auto res = seen.emplace(hbuf[i], ibuf[i]);
+            if (!res.second) { found = true; result = ibuf[i] + 1; }
+        }
+
+        base += batch;
+    }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    *ms_out = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    return result;
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 int main(int argc, char *argv[]) {
@@ -361,7 +415,8 @@ int main(int argc, char *argv[]) {
             if (bits_arr[bi] == bv) { b0 = bi; b1 = bi + 1; }
     }
 
-    printf("# algo  bits  cpu_count  cpu_ms  gpu_count  gpu_ms  expected\n");
+    printf("# algo  bits  cpu_count  cpu_ms  omp_count  omp_ms  gpu_count  gpu_ms  expected\n");
+    fprintf(stderr, "OpenMP max_threads = %d\n", omp_get_max_threads());
 
     for (int a = a0; a < a1; a++) {
         for (int bi = b0; bi < b1; bi++) {
@@ -374,13 +429,20 @@ int main(int argc, char *argv[]) {
                 cpu_cnt = (int64_t)cpu_collision(a, bits, &cpu_ms);
             }
 
+            int64_t  omp_cnt = -1;
+            double   omp_ms  = -1.0;
+            if (bits <= CPU_MAX_BITS) {
+                omp_cnt = (int64_t)omp_collision(a, bits, &omp_ms);
+            }
+
             float    gpu_ms  = 0.0f;
             uint64_t gpu_cnt = 0;
             gpu_collision(a, bits, &gpu_ms, &gpu_cnt);
 
-            printf("%s %d %lld %.3f %llu %.3f %llu\n",
+            printf("%s %d %lld %.3f %lld %.3f %llu %.3f %llu\n",
                    algo_names[a], bits,
                    (long long)cpu_cnt, cpu_ms,
+                   (long long)omp_cnt, omp_ms,
                    (unsigned long long)gpu_cnt, gpu_ms,
                    (unsigned long long)expected);
             fflush(stdout);

@@ -3,16 +3,16 @@
 # Usage: Final project — Task 3 collision search plots
 #
 # Reads: Final/Data/task3/scaling_task3_{md5,sha1,sha256}.dat
-#   columns: algo  bits  cpu_count  cpu_ms  gpu_ms  expected
-#   cpu_count / cpu_ms = -1 when bits > 56 (CPU not run)
+#   columns: algo  bits  cpu_count  cpu_ms  omp_count  omp_ms  gpu_count  gpu_ms  expected
+#   cpu_count / cpu_ms / omp_count / omp_ms = -1 when bits > CPU_MAX_BITS
 #
 # Produces:
 #   Final/Data/task3/task3_time.pdf/.png
-#     — time (ms) vs truncated bits, log scale, CPU vs GPU per algorithm
+#     — time (ms) vs truncated bits, log scale, CPU serial / OMP / GPU per algorithm
 #   Final/Data/task3/task3_birthday.pdf/.png
 #     — actual CPU count / theoretical expected (birthday paradox validation)
 #   Final/Data/task3/task3_speedup.pdf/.png
-#     — GPU speedup over CPU vs bits
+#     — GPU and OMP speedup over CPU serial vs bits
 
 import os
 import sys
@@ -40,30 +40,37 @@ for algo, path in DAT_FILES.items():
             if not line or line.startswith("#"):
                 continue
             parts = line.split()
-            if len(parts) < 6:
+            if len(parts) < 9:
                 continue
             a        = parts[0]
             bits     = int(parts[1])
-            cpu_cnt  = int(parts[2])    # -1 if not run
-            cpu_ms   = float(parts[3])  # -1.0 if not run
-            gpu_cnt  = int(parts[4])
-            gpu_ms   = float(parts[5])
-            expected = int(parts[6])
-            rows.append((a, bits, cpu_cnt, cpu_ms, gpu_cnt, gpu_ms, expected))
+            cpu_cnt  = int(parts[2])
+            cpu_ms   = float(parts[3])
+            omp_cnt  = int(parts[4])
+            omp_ms   = float(parts[5])
+            gpu_cnt  = int(parts[6])
+            gpu_ms   = float(parts[7])
+            expected = int(parts[8])
+            rows.append((a, bits, cpu_cnt, cpu_ms, omp_cnt, omp_ms, gpu_cnt, gpu_ms, expected))
 
 algos  = ["md5", "sha1", "sha256"]
 labels = {"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256"}
 colors = {"md5": "#4c72b0", "sha1": "#dd8452", "sha256": "#55a868"}
 
+IDX = {"bits":1,"cpu_cnt":2,"cpu_ms":3,"omp_cnt":4,"omp_ms":5,"gpu_cnt":6,"gpu_ms":7,"expected":8}
+
 def get(algo, field):
-    idx = {"bits":1,"cpu_cnt":2,"cpu_ms":3,"gpu_cnt":4,"gpu_ms":5,"expected":6}[field]
+    idx = IDX[field]
     return [(r[1], r[idx]) for r in rows if r[0] == algo]
 
 def valid_cpu(algo):
     return [(b, ms) for b, ms in get(algo, "cpu_ms") if ms >= 0]
 
+def valid_omp(algo):
+    return [(b, ms) for b, ms in get(algo, "omp_ms") if ms >= 0]
+
 # ── Plot 1: Time vs bits ──────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(9, 5))
+fig, ax = plt.subplots(figsize=(10, 5))
 
 for algo in algos:
     c   = colors[algo]
@@ -74,9 +81,17 @@ for algo in algos:
     bx  = [p[0] for p in pts]
     by  = [p[1] for p in pts]
     ax.plot(bx, by, "s--", color=c, linewidth=2, markersize=7, alpha=0.80,
-            label=f"{lbl} GPU (Pollard's ρ)")
+            label=f"{lbl} GPU")
 
-    # CPU — bits ≤ 56
+    # OMP — bits <= CPU_MAX_BITS
+    pts = valid_omp(algo)
+    if pts:
+        bx = [p[0] for p in pts]
+        by = [p[1] for p in pts]
+        ax.plot(bx, by, "^:", color=c, linewidth=2, markersize=7, alpha=0.80,
+                label=f"{lbl} OMP")
+
+    # CPU serial — bits <= CPU_MAX_BITS
     pts = valid_cpu(algo)
     if pts:
         bx = [p[0] for p in pts]
@@ -90,9 +105,9 @@ ax.set_xticks(all_bits)
 ax.set_xticklabels([str(b) for b in all_bits])
 ax.set_xlabel("Truncated Hash Bits", fontsize=12)
 ax.set_ylabel("Time to Find Collision (ms)", fontsize=12)
-ax.set_title("Truncated Collision Search: CPU vs GPU (Pollard's ρ)\n"
-             "(solid=CPU sequential, dashed=GPU Pollard's rho)", fontsize=12)
-ax.legend(fontsize=8, ncol=2)
+ax.set_title("Truncated Collision Search: CPU serial / OpenMP / GPU (Pollard's ρ)\n"
+             "(solid circle=CPU, dotted triangle=OMP, dashed square=GPU)", fontsize=11)
+ax.legend(fontsize=8, ncol=3)
 ax.yaxis.grid(True, linestyle="--", alpha=0.4)
 ax.set_axisbelow(True)
 fig.tight_layout()
@@ -101,7 +116,7 @@ fig.savefig("Final/Data/task3/task3_time.png", dpi=150)
 print("Saved Final/Data/task3/task3_time.pdf")
 plt.close(fig)
 
-# ── Plot 2: Birthday paradox validation (CPU count / expected) ────────────────
+# ── Plot 2: Birthday paradox validation (CPU serial count / expected) ─────────
 fig, ax = plt.subplots(figsize=(8, 5))
 
 cpu_bits = sorted(set(b for b, _ in valid_cpu("md5")))
@@ -132,24 +147,37 @@ fig.savefig("Final/Data/task3/task3_birthday.png", dpi=150)
 print("Saved Final/Data/task3/task3_birthday.pdf")
 plt.close(fig)
 
-# ── Plot 3: GPU speedup over CPU ──────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(8, 5))
+# ── Plot 3: Speedup over CPU serial ──────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(9, 5))
 
 for algo in algos:
+    c     = colors[algo]
+    lbl   = labels[algo]
     cpu_t = {b: ms for b, ms in valid_cpu(algo)}
     gpu_t = {b: ms for b, ms in get(algo, "gpu_ms")}
-    common_bits = sorted(set(cpu_t) & set(gpu_t))
-    if not common_bits:
-        continue
-    speedups = [cpu_t[b] / gpu_t[b] for b in common_bits]
-    ax.plot(common_bits, speedups, "o-", color=colors[algo], linewidth=2,
-            markersize=7, label=labels[algo])
+    omp_t = {b: ms for b, ms in valid_omp(algo)}
 
+    # GPU speedup (all CPU-valid bits only for fair comparison)
+    common_gpu = sorted(set(cpu_t) & set(gpu_t))
+    if common_gpu:
+        ax.plot(common_gpu, [cpu_t[b] / gpu_t[b] for b in common_gpu],
+                "s--", color=c, linewidth=2, markersize=7, alpha=0.80,
+                label=f"{lbl} GPU")
+
+    # OMP speedup
+    common_omp = sorted(set(cpu_t) & set(omp_t))
+    if common_omp:
+        ax.plot(common_omp, [cpu_t[b] / omp_t[b] for b in common_omp],
+                "^:", color=c, linewidth=2, markersize=7, alpha=0.80,
+                label=f"{lbl} OMP")
+
+ax.axhline(1.0, color="gray", linestyle="-", linewidth=1, alpha=0.5)
 ax.set_yscale("log")
 ax.set_xlabel("Truncated Hash Bits", fontsize=12)
-ax.set_ylabel("CPU time / GPU time  (speedup)", fontsize=12)
-ax.set_title("GPU Speedup over CPU Sequential Search", fontsize=13)
-ax.legend(fontsize=11)
+ax.set_ylabel("CPU serial time / impl time  (speedup)", fontsize=12)
+ax.set_title("Speedup over CPU Serial: OpenMP vs GPU\n"
+             "(dashed square=GPU, dotted triangle=OMP)", fontsize=12)
+ax.legend(fontsize=9, ncol=2)
 ax.yaxis.grid(True, linestyle="--", alpha=0.4)
 ax.set_axisbelow(True)
 fig.tight_layout()
@@ -159,11 +187,13 @@ print("Saved Final/Data/task3/task3_speedup.pdf")
 plt.close(fig)
 
 # ── Summary table ─────────────────────────────────────────────────────────────
-print(f"\n{'algo':>8}  {'bits':>4}  {'cpu_cnt':>12}  {'gpu_cnt':>12}  {'expected':>12}  "
-      f"{'ratio':>6}  {'cpu_ms':>9}  {'gpu_ms':>9}  {'speedup':>9}")
+print(f"\n{'algo':>8}  {'bits':>4}  {'cpu_cnt':>12}  {'omp_cnt':>12}  {'gpu_cnt':>12}  "
+      f"{'expected':>12}  {'cpu_ms':>9}  {'omp_ms':>9}  {'gpu_ms':>9}  "
+      f"{'omp_spd':>9}  {'gpu_spd':>9}")
 for r in rows:
-    algo, bits, cpu_cnt, cpu_ms, gpu_cnt, gpu_ms, expected = r
-    ratio   = cpu_cnt / expected if cpu_cnt >= 0 else float("nan")
-    speedup = cpu_ms  / gpu_ms   if cpu_ms  >= 0 and gpu_ms > 0 else float("nan")
-    print(f"{algo:>8}  {bits:>4}  {cpu_cnt:>12}  {gpu_cnt:>12}  {expected:>12}  "
-          f"{ratio:>6.2f}  {cpu_ms:>9.3f}  {gpu_ms:>9.3f}  {speedup:>9.1f}x")
+    algo, bits, cpu_cnt, cpu_ms, omp_cnt, omp_ms, gpu_cnt, gpu_ms, expected = r
+    omp_spd = cpu_ms / omp_ms if cpu_ms >= 0 and omp_ms > 0 else float("nan")
+    gpu_spd = cpu_ms / gpu_ms if cpu_ms >= 0 and gpu_ms > 0 else float("nan")
+    print(f"{algo:>8}  {bits:>4}  {cpu_cnt:>12}  {omp_cnt:>12}  {gpu_cnt:>12}  "
+          f"{expected:>12}  {cpu_ms:>9.3f}  {omp_ms:>9.3f}  {gpu_ms:>9.3f}  "
+          f"{omp_spd:>9.1f}x  {gpu_spd:>9.1f}x")
