@@ -1,0 +1,104 @@
+Task 3 — Truncated-Collision Search: CPU Serial vs OpenMP vs GPU (Pollard's rho)
+================================================================================
+
+Overview
+--------
+This task searches for collisions in truncated versions of MD5, SHA-1, and SHA-256.
+A "truncated collision" means two distinct inputs whose hash outputs agree in the
+lowest N bits. We sweep N in {16, 24, 32, 40, 48, 56, 64} and compare three
+implementations: CPU serial, CPU parallel (OpenMP), and GPU (Pollard's rho).
+
+Birthday Paradox Foundation
+----------------------------
+By the birthday paradox the expected number of random inputs needed to find a
+collision in an N-bit hash space is:
+
+    E[collisions] ≈ sqrt(π/2) × 2^(N/2)
+
+This grows as 2^(N/2), so each additional 8 bits doubles the required work twice
+(4× harder). The serial CPU runs are validated against this expectation; ratios
+near 1.0 confirm correct implementation.
+
+GPU Algorithm — Pollard's Rho with Distinguished Points
+---------------------------------------------------------
+The GPU runs Pollard's rho with distinguished points rather than a naive birthday
+search. Each of 65,536 CUDA threads walks an independent Markov chain:
+
+    x_{n+1} = truncate(hash(x_n), N bits)
+
+A "distinguished point" (DP) is any chain value x whose low dp_bits = N/4 bits
+are all zero. When two threads reach the same DP from different starting values,
+a collision exists between their chains. This approach uses O(1) memory per
+thread — the GPU only stores the DP buffer (8 MB), so it scales to bits=64
+without hitting device memory limits.
+
+Template kernels (template<int ALGO>) eliminate warp divergence: the compiler
+emits three separate specializations for MD5, SHA-1, and SHA-256, with no
+runtime branches inside the hot loop.
+
+CPU Serial Algorithm
+--------------------
+Sequential scan of inputs 0, 1, 2, ... hashing each and inserting into an
+std::unordered_map<uint64_t, uint64_t>. The first duplicate key is a collision.
+Run for bits ≤ 56; bits=64 requires ~2^32 entries (~64 GB) and is not feasible
+on the available hardware.
+
+OpenMP Parallel Algorithm — Thread Count Choice
+------------------------------------------------
+The OpenMP implementation uses a two-phase approach per batch:
+
+  Phase 1 (parallel): N threads each hash their slice of the current index range
+    into pre-allocated hbuf/ibuf arrays. No synchronization — threads write to
+    disjoint array positions.
+
+  Phase 2 (serial): merge the batch into a global std::unordered_map, stopping
+    at the first duplicate key.
+
+A dedicated thread-count scaling experiment was run on Euler sweeping
+OMP_NUM_THREADS in {1, 2, 4, 8, 12, 16, 20, 24, 28, 32} at bits={40, 48}.
+Performance peaked at 12 threads and degraded beyond that. Three factors explain
+this sweet spot:
+
+  1. NUMA boundary (primary cause).
+     Euler's compute nodes are dual-socket. Each socket has its own memory
+     controller. The first 12 cores all reside on socket 0 and access local
+     DRAM at full bandwidth. Threads 13+ cross to socket 1, incurring remote
+     memory latency (~2× slower). The hash buffers (hbuf/ibuf, ~32 MB at
+     bits=48) are allocated on socket 0's memory, so every cross-socket
+     thread pays a NUMA penalty on every read and write.
+
+  2. Amdahl's Law — serial merge bottleneck.
+     Phase 2 is entirely serial. As thread count rises, Phase 1 shrinks but
+     Phase 2 is constant. Past ~12 threads Phase 2 becomes the dominant term,
+     so additional threads yield diminishing returns before NUMA even matters.
+
+  3. L3 cache pressure.
+     The batch working set at bits=48 with 12 threads is ~32 MB, which sits
+     near the per-socket L3 cache capacity. Beyond 12 threads the larger batch
+     spills to DRAM, adding memory latency on top of the NUMA effect.
+
+All three scaling sbatch scripts therefore fix OMP_NUM_THREADS=12 and request
+--cpus-per-task=12 to stay on a single socket and avoid NUMA penalties.
+
+GPU vs CPU Speedup
+------------------
+The GPU outperforms both CPU implementations for all bit widths ≥ 32. The
+speedup grows with bits because:
+  - GPU work scales with the hash space (more threads = more parallelism)
+  - CPU serial time grows as 2^(N/2) with no additional parallelism
+  - The Pollard's rho algorithm on the GPU amortizes chain-walking overhead
+    across 65,536 simultaneous walkers
+
+For bits=64, only the GPU runs. The CPU (serial or OpenMP) would require ~2^32
+entries in the map, exhausting available system memory.
+
+Truncated Hash Extraction
+--------------------------
+All three implementations extract the same 8-byte truncated value:
+  MD5 (little-endian output):  first 8 digest bytes as LE uint64
+    = state[0] | (state[1] << 32)
+  SHA-1, SHA-256 (big-endian): first 8 digest bytes byte-swapped to LE uint64
+    = bswap32(state[0]) | (bswap32(state[1]) << 32)
+
+This ensures CPU and GPU collision counts are comparable and the birthday paradox
+ratio is computed against the correct hash space.

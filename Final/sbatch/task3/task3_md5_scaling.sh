@@ -3,12 +3,13 @@
 #SBATCH -J task3_md5
 #SBATCH -o Final/sbatch/task3/logs/task3_md5_scaling_%j.out
 #SBATCH -t 0-00:40:00
-#SBATCH --cpus-per-task=96
+#SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
 
 # Task 3 scaling — MD5, bits in {16,24,32,40,48,56,64}
-# CPU serial + OpenMP (cpus-per-task) for bits <= 56; GPU (Pollard's rho) for all bits.
+# CPU serial + OpenMP 12-thread (single-socket sweet spot) for bits <= 56; GPU for all bits.
+# 12 threads chosen: OMP scaling test showed peak at 12 cores (NUMA boundary on dual-socket node).
 # Produces: Final/Data/task3/scaling_task3_md5.dat
 
 set -e
@@ -34,6 +35,6 @@ nvcc -O3 -std=c++17 \
     Final/Code/sha256_cpu.cpp
 
 echo "=== Running MD5, bits = {16 24 32 40 48 56 64} ==="
-./Final/task3 md5 | tee "$OUTFILE"
+OMP_NUM_THREADS=12 ./Final/task3 md5 | tee "$OUTFILE"
 
 echo "=== Written to $OUTFILE ==="
