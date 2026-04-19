@@ -1,0 +1,101 @@
+Task 2 Analysis — GPU Throughput vs. Threads per Block
+ME759 Final Project — Stefan Arsov — Spring 2026
+======================================================
+
+1. Overview
+-----------
+Task 2 measures GPU hash throughput as a function of threads per block (tpb)
+while holding the workload fixed at n = 10,000,000 hashes per algorithm.
+The goal is to identify the optimal thread-block configuration for each hash
+function. Experiments ran on the UW-Madison Euler cluster (instruction
+partition, 1 GPU, --cpus-per-task=4, CUDA 13.0.0).
+
+
+2. Throughput Results (n = 10,000,000)
+---------------------------------------
+
+tpb       MD5 (MH/s)   SHA-1 (MH/s)   SHA-256 (MH/s)
+------    ----------   ------------   --------------
+    32        3021.1         1201.9            574.7   ← best for all
+    64        2840.9         1052.6            559.3
+   128        2717.4         1066.1            557.7
+   256        2277.9         1021.5            537.3
+   512        2197.8         1003.0            540.8
+  1024        2375.3         1003.0            557.4
+
+Best tpb = 32 for every algorithm. Throughput generally decreases as tpb
+increases, though with some non-monotone variation especially for MD5.
+
+
+3. Discussion
+-------------
+
+3a. Why smaller tpb is faster (register pressure / occupancy)
+Each GPU hash kernel consumes a substantial number of registers per thread.
+SHA-256, for example, maintains working variables a–h, a 64-word message
+schedule array W[64], and loop temporaries — easily 40–60+ registers/thread.
+SHA-1 carries W[80] (320 bytes of schedule). MD5 is lighter but still uses
+round-constant and shift arrays.
+
+The SM has a fixed register file (65,536 32-bit registers on Ampere-class
+hardware). The number of blocks that can run concurrently on one SM is:
+
+    max_blocks_per_SM = floor(registers_per_SM / (registers_per_thread × tpb))
+
+As tpb increases, each block claims more of the register file, and fewer
+blocks fit on the SM simultaneously. Fewer concurrent blocks → fewer active
+warps → less latency hiding → lower throughput.
+
+At tpb = 32 (the minimum meaningful warp-multiple), each block is one warp.
+The SM can hold the maximum number of blocks, keeping its warp scheduler
+saturated and hiding memory/instruction latency effectively. The kernels are
+purely compute-bound with no shared memory or inter-thread communication, so
+larger blocks provide no coalescing or synchronization benefit.
+
+3b. Algorithm sensitivity to tpb
+MD5 is the most sensitive: throughput drops 27% from tpb=32 to tpb=512.
+Its lighter register footprint means it starts with good occupancy at small
+tpb; as tpb grows, occupancy collapses more dramatically.
+
+SHA-1 drops ~17% from tpb=32 to tpb=512. Its 80-round message schedule
+(W[80]) is heavier, so occupancy is already partially limited even at tpb=32,
+and the decline is proportionally smaller.
+
+SHA-256 drops only ~6% across the full tpb range. It is the most register-
+intensive algorithm; occupancy is already constrained at tpb=32 and does not
+change much as tpb increases, leaving throughput relatively flat.
+
+3c. Non-monotone behavior (MD5)
+MD5 throughput at tpb=1024 (2375 MH/s) recovers slightly from tpb=512
+(2198 MH/s). This is a wave-quantization artifact: total blocks = ⌈N/tpb⌉.
+At non-power-of-two-friendly N, some tpb values produce a final partial wave
+of blocks that under-fills the SM, wasting cycles. The specific arithmetic
+of N=10,000,000 / tpb happens to land unfavorably at tpb=512, causing a
+slight dip before the tpb=1024 result.
+
+3d. Comparison to Task 1 (tpb = 256)
+Task 1 used tpb = 256 (a common default). Compared to the optimal tpb = 32:
+
+    Algorithm   tpb=256 MH/s   tpb=32 MH/s   Gain
+    ---------   ------------   -----------   ----
+    MD5               2277.9        3021.1   +33%
+    SHA-1             1021.5        1201.9   +18%
+    SHA-256            537.3         574.7    +7%
+
+Using tpb=32 would have improved Task 1 GPU throughput by 7–33% at no cost.
+This demonstrates that thread-block tuning is a meaningful, free optimization
+for register-pressure-limited kernels.
+
+
+4. Summary
+----------
+GPU hash throughput is maximized at the minimum valid tpb (32 = one warp) for
+all three algorithms. The root cause is register-file occupancy: hash kernels
+are register-heavy, and packing more threads into a block reduces the SM's
+ability to schedule multiple concurrent warps. Simpler algorithms (MD5) show
+the largest relative sensitivity because they start with higher occupancy that
+the configuration can disrupt; complex algorithms (SHA-256) are already
+register-starved and respond less. The practical implication: for purely
+compute-bound CUDA kernels with no shared memory, prefer small tpb values
+(32–64) when register pressure is high, and reserve large tpb for kernels
+that benefit from thread cooperation or memory coalescing.
