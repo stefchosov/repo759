@@ -2,7 +2,7 @@
 #SBATCH -p instruction
 #SBATCH -J task3_sha1
 #SBATCH -o Final/sbatch/task3/logs/task3_sha1_scaling_%j.out
-#SBATCH -t 0-00:40:00
+#SBATCH -t 0-01:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
 #SBATCH --mem=96G

@@ -39,6 +39,7 @@ for algo, path in DAT_FILES.items():
             parts = line.split()
             if len(parts) < 9:
                 continue
+            # bits=72 and 80 have -1 for cpu/omp columns — that's fine, handled below
             rows.append((
                 parts[0],        # algo
                 int(parts[1]),   # bits

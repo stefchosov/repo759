@@ -175,6 +175,230 @@ __device__ static uint64_t sha256_le64(uint64_t i) {
     return (uint64_t)bswap32d(h0 + a) | ((uint64_t)bswap32d(h1 + b) << 32);
 }
 
+// ── 128-bit type for bits > 64 ───────────────────────────────────────────────
+
+struct uint128 {
+    uint64_t lo, hi;
+};
+
+__device__ static inline uint128 mask128(uint128 x, int bits) {
+    if (bits >= 128) return x;
+    if (bits >= 64) {
+        int shift = bits - 64;
+        return { x.lo, x.hi & ((1ull << shift) - 1ull) };
+    }
+    return { x.lo & ((1ull << bits) - 1ull), 0ull };
+}
+
+// MD5 — 16-byte (128-bit) input, full 128-bit output (LE)
+__device__ static uint128 md5_128(uint128 i) {
+    uint32_t M[16] = {};
+    M[0] = (uint32_t)(i.lo);        M[1] = (uint32_t)(i.lo >> 32);
+    M[2] = (uint32_t)(i.hi);        M[3] = (uint32_t)(i.hi >> 32);
+    M[4] = 0x00000080u;             // stop bit after 16 data bytes
+    M[14] = 0x00000080u;            // message length = 128 bits (LE)
+
+    uint32_t a0=0x67452301u, b0=0xefcdab89u, c0=0x98badcfeu, d0=0x10325476u;
+    uint32_t a=a0, b=b0, c=c0, d=d0;
+    for (int j = 0; j < 64; j++) {
+        uint32_t f, g;
+        if      (j < 16) { f = (b & c) | (~b & d); g = (uint32_t)j;       }
+        else if (j < 32) { f = (d & b) | (~d & c); g = (5u*j + 1u) % 16u; }
+        else if (j < 48) { f = b ^ c ^ d;           g = (3u*j + 5u) % 16u; }
+        else             { f = c ^ (b | ~d);         g = (7u*j)      % 16u; }
+        f += a + t3_md5_K[j] + M[g];
+        a = d; d = c; c = b; b += rotl32d(f, t3_md5_S[j]);
+    }
+    a0+=a; b0+=b; c0+=c; d0+=d;
+    return { (uint64_t)a0 | ((uint64_t)b0 << 32),
+             (uint64_t)c0 | ((uint64_t)d0 << 32) };
+}
+
+// SHA-1 — 16-byte input, first 128 bits of output (LE)
+__device__ static uint128 sha1_128(uint128 i) {
+    uint32_t W[80] = {};
+    W[0] = bswap32d((uint32_t)(i.lo));      W[1] = bswap32d((uint32_t)(i.lo >> 32));
+    W[2] = bswap32d((uint32_t)(i.hi));      W[3] = bswap32d((uint32_t)(i.hi >> 32));
+    W[4] = 0x80000000u;                     // stop bit after 16 bytes
+    W[15] = 0x00000080u;                    // message length = 128 bits (BE)
+    for (int j = 16; j < 80; j++)
+        W[j] = rotl32d(W[j-3] ^ W[j-8] ^ W[j-14] ^ W[j-16], 1);
+
+    uint32_t h0=0x67452301u, h1=0xefcdab89u, h2=0x98badcfeu, h3=0x10325476u;
+    uint32_t a=h0, b=h1, c=h2, d=h3, e=0xc3d2e1f0u;
+    for (int j = 0; j < 80; j++) {
+        uint32_t f, k;
+        if      (j < 20) { f = (b & c) | (~b & d);          k = 0x5a827999u; }
+        else if (j < 40) { f = b ^ c ^ d;                   k = 0x6ed9eba1u; }
+        else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdcu; }
+        else             { f = b ^ c ^ d;                    k = 0xca62c1d6u; }
+        uint32_t tmp = rotl32d(a, 5) + f + e + k + W[j];
+        e = d; d = c; c = rotl32d(b, 30); b = a; a = tmp;
+    }
+    h0+=a; h1+=b; h2+=c; h3+=d;
+    return { (uint64_t)bswap32d(h0) | ((uint64_t)bswap32d(h1) << 32),
+             (uint64_t)bswap32d(h2) | ((uint64_t)bswap32d(h3) << 32) };
+}
+
+// SHA-256 — 16-byte input, first 128 bits of output (LE)
+__device__ static uint128 sha256_128(uint128 i) {
+    uint32_t W[64] = {};
+    W[0] = bswap32d((uint32_t)(i.lo));      W[1] = bswap32d((uint32_t)(i.lo >> 32));
+    W[2] = bswap32d((uint32_t)(i.hi));      W[3] = bswap32d((uint32_t)(i.hi >> 32));
+    W[4] = 0x80000000u;
+    W[15] = 0x00000080u;                    // length = 128 bits (BE)
+    for (int j = 16; j < 64; j++) {
+        uint32_t s0 = rotr32d(W[j-15],  7) ^ rotr32d(W[j-15], 18) ^ (W[j-15] >>  3);
+        uint32_t s1 = rotr32d(W[j- 2], 17) ^ rotr32d(W[j- 2], 19) ^ (W[j- 2] >> 10);
+        W[j] = W[j-16] + s0 + W[j-7] + s1;
+    }
+    uint32_t h0=0x6a09e667u, h1=0xbb67ae85u, h2=0x3c6ef372u, h3=0xa54ff53au;
+    uint32_t a=h0, b=h1, c=h2, d=h3;
+    uint32_t e=0x510e527fu, f=0x9b05688cu, g=0x1f83d9abu, h=0x5be0cd19u;
+    for (int j = 0; j < 64; j++) {
+        uint32_t S1  = rotr32d(e,  6) ^ rotr32d(e, 11) ^ rotr32d(e, 25);
+        uint32_t ch  = (e & f) ^ (~e & g);
+        uint32_t t1  = h + S1 + ch + t3_sha256_K[j] + W[j];
+        uint32_t S0  = rotr32d(a,  2) ^ rotr32d(a, 13) ^ rotr32d(a, 22);
+        uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+        uint32_t t2  = S0 + maj;
+        h = g; g = f; f = e; e = d + t1;
+        d = c; c = b; b = a; a = t1 + t2;
+    }
+    h0+=a; h1+=b; h2+=c; h3+=d;
+    return { (uint64_t)bswap32d(h0) | ((uint64_t)bswap32d(h1) << 32),
+             (uint64_t)bswap32d(h2) | ((uint64_t)bswap32d(h3) << 32) };
+}
+
+// ── Wide (bits > 64) Pollard's rho kernel ────────────────────────────────────
+
+struct DPEntry128 {
+    uint128 start;
+    uint128 dp_val;
+};
+
+template<int ALGO>
+__global__ void pollard_kernel_wide(
+    int bits, uint64_t dp_mask,
+    uint64_t chain_offset, uint64_t n_threads,
+    DPEntry128 *dp_buf, unsigned long long *dp_cnt,
+    uint64_t dp_cap, uint64_t iters_per_thread, uint64_t max_chain_len
+) {
+    uint64_t tid = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n_threads) return;
+
+    uint64_t  chain_idx = tid;
+    uint128   x         = mask128({ chain_offset + chain_idx, 0ull }, bits);
+    uint128   start     = x;
+    uint64_t  steps     = 0;
+
+    for (uint64_t iter = 0; iter < iters_per_thread; iter++) {
+        uint128 h;
+        if      constexpr (ALGO == 0) h = md5_128(x);
+        else if constexpr (ALGO == 1) h = sha1_128(x);
+        else                          h = sha256_128(x);
+        x = mask128(h, bits);
+        steps++;
+
+        bool is_dp      = (x.lo & dp_mask) == 0;
+        bool chain_long = (steps >= max_chain_len);
+
+        if (is_dp) {
+            unsigned long long idx = atomicAdd(dp_cnt, 1ULL);
+            if (idx < (unsigned long long)dp_cap) {
+                dp_buf[idx].start  = start;
+                dp_buf[idx].dp_val = x;
+            }
+        }
+
+        if (is_dp || chain_long) {
+            chain_idx += n_threads;
+            x     = mask128({ chain_offset + chain_idx, 0ull }, bits);
+            start = x;
+            steps = 0;
+        }
+    }
+}
+
+// ── GPU collision search — wide path (bits > 64) ──────────────────────────────
+
+static void gpu_collision_wide(int algo, int bits, float *ms_out, uint64_t *count_out) {
+    const int      dp_bits       = bits / 4;
+    const uint64_t dp_mask       = (1ull << dp_bits) - 1ull;
+    const uint64_t n_threads     = 1ull << 16;
+    const int      tpb           = 256;
+    const uint64_t iters_per_thr = 4ull << dp_bits;
+    const uint64_t max_chain_len = 16ull << dp_bits;
+    const uint64_t dp_cap        = n_threads * 8;
+
+    DPEntry128         *d_dp_buf = nullptr;
+    unsigned long long *d_dp_cnt = nullptr;
+    cudaMalloc(&d_dp_buf, dp_cap * sizeof(DPEntry128));
+    cudaMalloc(&d_dp_cnt, sizeof(unsigned long long));
+
+    std::vector<DPEntry128> h_buf(dp_cap);
+
+    using Key = std::pair<uint64_t, uint64_t>;
+    struct HashKey { size_t operator()(const Key& k) const {
+        return k.first ^ (k.second * 0x9e3779b97f4a7c15ULL);
+    }};
+    std::unordered_map<Key, Key, HashKey> seen;
+    seen.reserve(1u << std::min(dp_bits + 4, 22));
+
+    uint64_t chain_offset = 0;
+    bool     found        = false;
+    int      blocks       = (int)(n_threads / tpb);
+    *count_out            = 0;
+
+    cudaEvent_t ev0, ev1;
+    cudaEventCreate(&ev0);
+    cudaEventCreate(&ev1);
+    cudaEventRecord(ev0);
+
+    while (!found) {
+        cudaMemset(d_dp_cnt, 0, sizeof(unsigned long long));
+
+        if      (algo == 0)
+            pollard_kernel_wide<0><<<blocks, tpb>>>(bits, dp_mask, chain_offset,
+                n_threads, d_dp_buf, d_dp_cnt, dp_cap, iters_per_thr, max_chain_len);
+        else if (algo == 1)
+            pollard_kernel_wide<1><<<blocks, tpb>>>(bits, dp_mask, chain_offset,
+                n_threads, d_dp_buf, d_dp_cnt, dp_cap, iters_per_thr, max_chain_len);
+        else
+            pollard_kernel_wide<2><<<blocks, tpb>>>(bits, dp_mask, chain_offset,
+                n_threads, d_dp_buf, d_dp_cnt, dp_cap, iters_per_thr, max_chain_len);
+
+        cudaDeviceSynchronize();
+
+        unsigned long long n_dps_raw = 0;
+        cudaMemcpy(&n_dps_raw, d_dp_cnt, sizeof(n_dps_raw), cudaMemcpyDeviceToHost);
+        uint64_t n_dps = std::min((uint64_t)n_dps_raw, dp_cap);
+        cudaMemcpy(h_buf.data(), d_dp_buf, n_dps * sizeof(DPEntry128), cudaMemcpyDeviceToHost);
+
+        for (uint64_t k = 0; k < n_dps && !found; k++) {
+            Key dv = { h_buf[k].dp_val.lo, h_buf[k].dp_val.hi };
+            Key st = { h_buf[k].start.lo,  h_buf[k].start.hi  };
+            auto it = seen.find(dv);
+            if (it != seen.end() && it->second != st) {
+                found = true;
+            } else {
+                seen.emplace(dv, st);
+            }
+        }
+
+        *count_out   += n_threads * iters_per_thr;
+        chain_offset += n_threads << 3;
+    }
+
+    cudaEventRecord(ev1);
+    cudaEventSynchronize(ev1);
+    cudaEventElapsedTime(ms_out, ev0, ev1);
+    cudaEventDestroy(ev0);
+    cudaEventDestroy(ev1);
+    cudaFree(d_dp_buf);
+    cudaFree(d_dp_cnt);
+}
+
 // ── Distinguished-point entry ─────────────────────────────────────────────────
 
 struct DPEntry {
@@ -235,6 +459,7 @@ __global__ void pollard_kernel(
 // ── GPU collision search (Pollard's rho) ──────────────────────────────────────
 
 static void gpu_collision(int algo, int bits, float *ms_out, uint64_t *count_out) {
+    if (bits > 64) { gpu_collision_wide(algo, bits, ms_out, count_out); return; }
     // dp_bits = bits/4: expected chain length 2^dp_bits, expected DPs before
     //   collision = sqrt(pi/2) * 2^(bits/4) << dp_buf capacity.
     const int      dp_bits       = bits / 4;
@@ -401,8 +626,8 @@ static uint64_t omp_collision(int algo, int bits, double *ms_out) {
 
 int main(int argc, char *argv[]) {
     static const char *algo_names[] = {"md5", "sha1", "sha256"};
-    static const int   bits_arr[]   = {16, 24, 32, 40, 48, 56, 64};
-    static const int   N_BITS       = 7;
+    static const int   bits_arr[]   = {16, 24, 32, 40, 48, 56, 64, 72, 80};
+    static const int   N_BITS       = 9;
 
     int a0 = 0, a1 = 3, b0 = 0, b1 = N_BITS;
     if (argc >= 2) {

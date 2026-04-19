@@ -5,8 +5,10 @@ Overview
 --------
 This task searches for collisions in truncated versions of MD5, SHA-1, and SHA-256.
 A "truncated collision" means two distinct inputs whose hash outputs agree in the
-lowest N bits. We sweep N in {16, 24, 32, 40, 48, 56, 64} and compare three
+lowest N bits. We sweep N in {16, 24, 32, 40, 48, 56, 64, 72, 80} and compare three
 implementations: CPU serial, CPU parallel (OpenMP), and GPU (Pollard's rho).
+CPU and OpenMP run for bits ≤ 56 only (memory constraint); bits=64, 72, and 80
+are GPU-only to demonstrate continued GPU scaling where CPU is infeasible.
 
 Birthday Paradox Foundation
 ----------------------------
@@ -135,6 +137,29 @@ high bit counts is therefore algorithmic, not just clock speed: Pollard's rho
 eliminates memory scaling entirely. CPU approaches, no matter how well
 parallelized, must touch O(2^(N/2)) memory to detect collisions via the
 birthday paradox, making them memory-bandwidth-bound at scale.
+
+GPU Extension to bits=72 and bits=80
+--------------------------------------
+To further demonstrate GPU-only scaling, the benchmark extends to bits=72 and
+bits=80 — ranges where no CPU implementation is feasible. This required a
+128-bit arithmetic extension to the GPU code (uint64_t maxes at 64 bits):
+
+  - uint128 struct (lo/hi pair of uint64_t) for chain values and DP entries
+  - Wide hash functions (md5_128, sha1_128, sha256_128) accepting 16-byte
+    (128-bit) inputs and producing 128-bit outputs with correct MD5/SHA padding
+  - pollard_kernel_wide<ALGO> template kernel using uint128 throughout
+  - gpu_collision dispatches to the wide path automatically for bits > 64
+
+Expected GPU times (relative to bits=64):
+  bits=72: ~16× longer  → ~2 minutes
+  bits=80: ~256× longer → ~30 minutes
+  bits=88: ~4096× longer → ~8 hours (infeasible within job time limits)
+  bits=96: ~65536× longer → ~5 days (completely infeasible)
+
+The data at bits=72 and bits=80 extend the speedup curve well beyond what any
+CPU implementation could reach, providing clear empirical evidence that the
+GPU's O(1)-memory Pollard's rho algorithm scales to cryptographically
+meaningful bit widths.
 
 GPU vs CPU Speedup
 ------------------
