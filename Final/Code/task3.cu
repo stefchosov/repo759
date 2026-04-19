@@ -40,7 +40,7 @@
 #include "sha1_cpu.h"
 #include "sha256_cpu.h"
 
-static constexpr int CPU_MAX_BITS = 56;
+static constexpr int CPU_MAX_BITS = 48;
 
 // ── GPU constant memory ──────────────────────────────────────────────────────
 
