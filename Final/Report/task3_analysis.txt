@@ -185,3 +185,50 @@ All three implementations extract the same 8-byte truncated value:
 
 This ensures CPU and GPU collision counts are comparable and the birthday paradox
 ratio is computed against the correct hash space.
+
+Task 4 Proposal — GPU Algorithm Comparison
+-------------------------------------------
+A natural follow-on experiment is to benchmark three fundamentally different GPU
+collision search strategies against each other to identify where each provides
+maximum speedup, and to find the crossover points where the optimal algorithm
+changes.
+
+Algorithm 1: GPU Birthday Attack with Device-Side Concurrent Hash Table
+  Allocate a large open-addressing hash table directly in GPU VRAM. All 65,536
+  threads insert (truncated_hash → index) pairs in parallel using atomicCAS for
+  lock-free on-device collision detection. No CPU merge step is needed — the
+  collision is flagged on-device the moment two threads map to the same slot.
+
+  Implementation:
+    - Device array: uint64_t table[2^(bits/2 + 2)] (2× the expected entries)
+    - Insert: atomicCAS to claim a slot; if slot already holds a different start
+      index → collision found, set a device flag
+    - Early exit: a single device-side unsigned int flag polled after each kernel
+    - Memory: 2^(bits/2+2) × 8 bytes → 256 MB at bits=48, 4 GB at bits=56
+
+  Hypothesis: faster than Pollard's rho at bits≤48 (VRAM fits, no chain-walking
+  overhead); at bits≥56 the table exceeds 8 GB VRAM and Pollard's rho wins.
+
+Algorithm 2: GPU Thrust Parallel Sort
+  Hash a full batch of N ≈ sqrt(π/2)×2^(bits/2) inputs on GPU, store (hash,index)
+  pairs in device memory, sort with thrust::sort_by_key, then scan for adjacent
+  equal-hash pairs with a final kernel.
+
+  Implementation:
+    - thrust::device_vector<thrust::pair<uint64_t,uint64_t>> of size N
+    - thrust::sort_by_key on the hash field (radix sort, O(N) practical)
+    - thrust::adjacent_difference or custom kernel to find first duplicate key
+    - Memory: N × 16 bytes → 256 MB at bits=48, 4 GB at bits=56
+
+  Hypothesis: fastest for small bits (Thrust radix sort achieves ~1 GB/s on GPU,
+  placing bits=48 at ~0.3 s sort time vs 0.54 s Pollard); crossover with Pollard
+  expected around bits=52–56 as working set saturates VRAM.
+
+Expected crossover summary:
+  bits ≤ 48:  Thrust sort fastest (O(N log N) but fully GPU-parallel, VRAM fits)
+  bits 48–56: GPU birthday table competitive (atomicCAS overhead vs chain walking)
+  bits ≥ 56:  Pollard's rho dominant (O(1) memory; other approaches OOM on GPU)
+  bits ≥ 64:  Pollard's rho only viable option on any hardware
+
+This would establish a complete GPU algorithm selection guide and quantify
+exactly how much overhead Pollard's rho pays for its O(1) memory guarantee.

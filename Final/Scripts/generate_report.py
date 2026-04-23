@@ -354,20 +354,58 @@ bullet("Amdahl's Law: serial fraction identification, theoretical speedup ceilin
 
 body("Future work:")
 bullet(
-    "Parallel sort-based CPU collision search: replacing unordered_map with a flat "
-    "sorted array would reduce memory to ~43 GB at bits=64 and enable a fully parallel "
-    "collision detection step via radix sort + linear scan, potentially reaching bits=64 "
-    "on CPU in 20–30 seconds on a high-memory server."
-)
-bullet(
     "bits=80 GPU: achievable in ~30 minutes but exceeds Euler's 40-minute instruction "
     "partition limit. Running on a partition with longer wall-clock limits would extend "
-    "the speedup curve to bits=80."
+    "the speedup curve one more data point to bits=80."
 )
 bullet(
-    "cuBLAS-accelerated SHA: exploring whether batched GEMM or tensor cores can "
-    "accelerate the inner loop of SHA compression functions for throughput gains "
-    "beyond the current register-bound implementation."
+    "Parallel sort-based CPU collision search: replacing unordered_map with a flat "
+    "sorted array reduces memory to ~43 GB at bits=64. A fully parallel radix sort + "
+    "linear scan could reach bits=64 on CPU in 20–30 seconds on a high-memory server, "
+    "narrowing the algorithmic gap with Pollard's rho."
+)
+
+body(
+    "Task 4 — GPU Algorithm Comparison: A natural extension is to benchmark three "
+    "fundamentally different GPU collision search strategies against each other to "
+    "identify where each provides maximum speedup and understand the memory/compute "
+    "tradeoff. Two strong candidates:"
+)
+bullet(
+    "GPU Birthday Attack with device-side concurrent hash table. Allocate a large "
+    "open-addressing hash table directly in GPU VRAM and have all 65,536 threads "
+    "insert (truncated_hash → index) pairs in parallel using atomicCAS for lock-free "
+    "collision detection. No CPU-side merge step is needed — the collision is detected "
+    "on-device the moment two threads map to the same slot. "
+    "Expected behavior: at small bit widths (bits≤48) where the entire table fits in "
+    "GPU VRAM (8 GB GPU holds 2^29 × 8B = 4 GB), this approach should be faster than "
+    "Pollard's rho because it eliminates the chain-walking overhead and the DP "
+    "detection round-trips. At bits≥56 the table exceeds VRAM and Pollard's rho "
+    "with O(1) memory wins. The crossover point is the main finding. "
+    "Implementation: a flat uint64_t[2^(bits/2+2)] device array, atomicCAS for "
+    "insert, a single __global__ kernel with early-exit via a device-side flag."
+)
+bullet(
+    "GPU Thrust Parallel Sort. Hash a full batch of N = sqrt(pi/2) * 2^(bits/2) "
+    "inputs on GPU, store (hash, index) pairs in device memory, then use "
+    "thrust::sort_by_key to sort by hash, and a final kernel to scan for adjacent "
+    "equal-hash pairs. This is entirely GPU-resident — no CPU merge bottleneck — "
+    "and directly parallelizes the sort-based approach that would improve CPU "
+    "performance. "
+    "Expected behavior: faster than Pollard's rho at small bits (sort is O(N log N) "
+    "but fully parallel and cache-friendly); slower at large bits where N exceeds "
+    "VRAM. Thrust radix sort on GPU achieves ~1 GB/s for 64-bit keys, placing bits=48 "
+    "(16M pairs × 16B = 256 MB) at ~0.3 seconds sort time, well under Pollard's "
+    "544 ms. The crossover with Pollard's rho is expected around bits=52–56, where "
+    "the Thrust sort working set saturates VRAM. "
+    "Implementation: thrust::device_vector<thrust::pair<uint64_t,uint64_t>>, "
+    "thrust::sort_by_key, then thrust::adjacent_difference to flag duplicates."
+)
+body(
+    "Together, Tasks 3 and 4 would establish a complete GPU algorithm selection guide: "
+    "Thrust sort wins at bits≤50, GPU birthday table wins at bits≤56 (given sufficient "
+    "VRAM), and Pollard's rho with distinguished points wins at bits≥56 where O(1) "
+    "memory is the only feasible approach."
 )
 
 # ── References ────────────────────────────────────────────────────────────────
