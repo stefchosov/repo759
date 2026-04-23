@@ -419,6 +419,9 @@ body("[4] Kirk, D. B., & Hwu, W.-m. W. (2016). Programming Massively Parallel "
      "Processors: A Hands-on Approach (3rd ed.). Morgan Kaufmann.")
 body("[5] OpenMP Architecture Review Board. OpenMP Application Programming Interface, "
      "Version 5.2. 2021.")
+body("[6] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) "
+     "[AI coding assistant]. Used for code generation, algorithm implementation, and "
+     "analysis throughout this project. https://www.anthropic.com/claude-code")
 
 out = 'Final/Report/FinalProject_Arsov.docx'
 os.makedirs('Final/Report', exist_ok=True)

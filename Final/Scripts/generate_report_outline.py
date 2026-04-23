@@ -171,6 +171,9 @@ body('[1] Rivest (1992). RFC 1321: MD5 Message-Digest Algorithm.')
 body('[2] NIST FIPS 180-4: Secure Hash Standard. 2015.')
 body('[3] van Oorschot & Wiener (1999). Parallel Collision Search with Cryptanalytic Applications. J. Cryptology 12(1).')
 body('[4] Kirk & Hwu (2016). Programming Massively Parallel Processors, 3rd ed.')
+body('[5] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) '
+     '[AI coding assistant]. Used for code generation, algorithm implementation, and '
+     'analysis throughout this project. https://www.anthropic.com/claude-code')
 
 out = 'Final/Report/FinalProject_Arsov_Outline.docx'
 doc.save(out)
