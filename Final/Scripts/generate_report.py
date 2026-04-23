@@ -419,7 +419,21 @@ body("[4] Kirk, D. B., & Hwu, W.-m. W. (2016). Programming Massively Parallel "
      "Processors: A Hands-on Approach (3rd ed.). Morgan Kaufmann.")
 body("[5] OpenMP Architecture Review Board. OpenMP Application Programming Interface, "
      "Version 5.2. 2021.")
-body("[6] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) "
+body("[6] NVIDIA Corporation. (2024). CUDA C++ Programming Guide. "
+     "https://docs.nvidia.com/cuda/cuda-c-programming-guide/ "
+     "(cudaEvent_t timing, __constant__ memory, atomicAdd, warp scheduling, "
+     "register file occupancy.)")
+body("[7] Pollard, J. M. (1978). Monte Carlo methods for index computation mod p. "
+     "Mathematics of Computation, 32(143), 918–924. "
+     "(Original rho cycle-detection algorithm; extended by van Oorschot & Wiener [3].)")
+body("[8] Flajolet, P., & Odlyzko, A. (1990). Random mapping statistics. "
+     "Advances in Cryptology – EUROCRYPT '89, Lecture Notes in Computer Science, "
+     "vol. 434, pp. 329–354. Springer. "
+     "(Source for birthday paradox collision expectation E ≈ √(π/2) · 2^(N/2).)")
+body("[9] Bell, N., & Hoberock, J. (2011). Thrust: A productivity-oriented library "
+     "for CUDA. GPU Computing Gems Jade Edition, pp. 359–371. Morgan Kaufmann. "
+     "(Referenced in Task 4 proposal for GPU parallel sort-based collision search.)")
+body("[10] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) "
      "[AI coding assistant]. Used for code generation, algorithm implementation, and "
      "analysis throughout this project. https://www.anthropic.com/claude-code")
 

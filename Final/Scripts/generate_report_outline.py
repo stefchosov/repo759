@@ -171,7 +171,16 @@ body('[1] Rivest (1992). RFC 1321: MD5 Message-Digest Algorithm.')
 body('[2] NIST FIPS 180-4: Secure Hash Standard. 2015.')
 body('[3] van Oorschot & Wiener (1999). Parallel Collision Search with Cryptanalytic Applications. J. Cryptology 12(1).')
 body('[4] Kirk & Hwu (2016). Programming Massively Parallel Processors, 3rd ed.')
-body('[5] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) '
+body('[5] NVIDIA Corporation. (2024). CUDA C++ Programming Guide. '
+     'https://docs.nvidia.com/cuda/cuda-c-programming-guide/')
+body('[6] Pollard, J. M. (1978). Monte Carlo methods for index computation mod p. '
+     'Mathematics of Computation, 32(143), 918–924.')
+body('[7] Flajolet, P., & Odlyzko, A. (1990). Random mapping statistics. '
+     'EUROCRYPT \'89, LNCS vol. 434, pp. 329–354. Springer. '
+     '(Birthday paradox collision expectation formula.)')
+body('[8] Bell, N., & Hoberock, J. (2011). Thrust: A productivity-oriented library '
+     'for CUDA. GPU Computing Gems Jade Edition, pp. 359–371. Morgan Kaufmann.')
+body('[9] Anthropic. (2026). Claude Code with Claude Sonnet 4.6 (claude-sonnet-4-6) '
      '[AI coding assistant]. Used for code generation, algorithm implementation, and '
      'analysis throughout this project. https://www.anthropic.com/claude-code')
 
