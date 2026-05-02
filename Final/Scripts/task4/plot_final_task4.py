@@ -234,13 +234,14 @@ fig, ax = plt.subplots(figsize=(8, 5))
 x = list(range(len(algos)))
 width = 0.30
 
-pol_56  = [t3[a].get(56, 0) for a in algos]
-uni_56_total = [t4_uni[a].get(56, (0,0,0))[0] for a in algos]
+pol_56  = [t3.get(a, {}).get(56, 0) for a in algos]
+uni_56_total = [t4_uni.get(a, {}).get(56, (0,0,0))[0] for a in algos]
 uni_56_per   = []
 for a in algos:
-    if 56 in t4_uni.get(a, {}):
-        ms, count, exp = t4_uni[a][56]
-        rounds = max(1, count / exp)
+    entry = t4_uni.get(a, {}).get(56)
+    if entry is not None:
+        ms, count, exp = entry
+        rounds = max(1.0, count / exp) if exp else 1.0
         uni_56_per.append(ms / rounds)
     else:
         uni_56_per.append(0)
