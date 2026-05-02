@@ -131,6 +131,10 @@ bullet("task2.cu — tpb sweep: same workload as Task 1 but varies threads-per-b
        "from 32 to 1024, reporting throughput at each configuration.")
 bullet("task3.cu — collision search: CPU serial, OpenMP parallel, and GPU Pollard's "
        "rho implementations for bits in {16,24,32,40,48,56,64,72}.")
+bullet("task4.cu — GPU Thrust-sort collision search: hash → thrust::sort_by_key → "
+       "adjacent-duplicate kernel, bits in {16,24,32,40,48} (VRAM-capped).")
+bullet("gpu_hashes_narrow.cuh — shared device hash functions used by task4.cu (and "
+       "available for future GPU work).")
 bullet("md5_cpu.cpp / sha1_cpu.cpp / sha256_cpu.cpp — portable CPU reference "
        "implementations used by both CPU and OpenMP paths in Task 3.")
 bullet("md5_cpu.h / sha1_cpu.h / sha256_cpu.h — headers for the above.")
@@ -263,6 +267,32 @@ body(
     "Plot: Final/Data/task3/omp_scaling_speedup.pdf."
 )
 
+heading('3.4 Task 4 — GPU Algorithm Comparison: Thrust Sort vs Pollard\'s rho', level=2)
+body(
+    "Task 4 implements an alternative GPU collision search using thrust::sort_by_key "
+    "to compare against Task 3's Pollard's rho with distinguished points. The Thrust "
+    "approach is conceptually simpler: hash a batch of ~4 × expected inputs into device "
+    "arrays, sort by hash key, and scan for the first adjacent equal-hash pair. It is "
+    "fully GPU-resident with no CPU-side merge phase. The bit width is capped at 48 "
+    "because the sort working set (4 × expected × 16 bytes) saturates 8 GB GPU VRAM at "
+    "bits ≥ 52."
+)
+body(
+    "Code: Final/Code/task4.cu uses Final/Code/gpu_hashes_narrow.cuh for the device "
+    "hash functions (shared with Task 3). Three CUDA kernels: hash_to_arrays (Phase 1), "
+    "thrust::sort_by_key (Phase 2), find_dup_kernel (Phase 3 — atomic-min on detected "
+    "duplicates). Output: Final/Data/task4/scaling_task4.dat. "
+    "Plots: Final/Data/task4/task4_compare.pdf and task4_speedup.pdf."
+)
+body(
+    "Expected behavior: Thrust sort wins at small bit widths where the sort+scan is "
+    "fast and all data fits trivially in VRAM, with Pollard's rho's chain-walking "
+    "overhead dominating its small-bits time. As bits grow toward 48, the sort cost "
+    "(O(N log N) where N = 4 × 2^(bits/2)) grows faster than Pollard's rho, and the "
+    "two converge. At bits ≥ 52 only Pollard's rho is viable because the Thrust "
+    "working set exceeds VRAM."
+)
+
 # ── 4. Deliverables ───────────────────────────────────────────────────────────
 heading('4. Deliverables: Building and Running')
 
@@ -290,6 +320,12 @@ body("Task 3 (requires -Xcompiler -fopenmp for OpenMP support):")
 doc.add_paragraph(
     "nvcc -O3 -std=c++17 -Xcompiler -fopenmp -o Final/task3 Final/Code/task3.cu "
     "Final/Code/md5_cpu.cpp Final/Code/sha1_cpu.cpp Final/Code/sha256_cpu.cpp",
+    style='Normal'
+).runs[0].font.name = 'Courier New'
+
+body("Task 4 (Thrust ships with CUDA — no extra link flags needed):")
+doc.add_paragraph(
+    "nvcc -O3 -std=c++17 -o Final/task4 Final/Code/task4.cu",
     style='Normal'
 ).runs[0].font.name = 'Courier New'
 
@@ -366,10 +402,12 @@ bullet(
 )
 
 body(
-    "Task 4 — GPU Algorithm Comparison: A natural extension is to benchmark three "
-    "fundamentally different GPU collision search strategies against each other to "
-    "identify where each provides maximum speedup and understand the memory/compute "
-    "tradeoff. Two strong candidates:"
+    "Implemented Task 4 — GPU Thrust Sort variant — and proposed extension: "
+    "Task 4's Thrust-based GPU collision search is implemented and benchmarked "
+    "(see Section 3.4); it complements Pollard's rho by using sort_by_key + "
+    "adjacent-duplicate scan, demonstrating where each algorithm provides maximum "
+    "speedup as a function of bit width. A natural further extension is the third "
+    "GPU strategy not yet implemented:"
 )
 bullet(
     "GPU Birthday Attack with device-side concurrent hash table. Allocate a large "
