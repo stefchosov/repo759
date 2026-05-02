@@ -197,6 +197,52 @@ body("GPU Pollard's Rho with Distinguished Points: 65,536 CUDA threads each walk
      "wide hash functions accepting 16-byte inputs, and a pollard_kernel_wide template, "
      "enabling bits=72.")
 
+heading('2.5 Task 4: GPU Algorithm Comparison via Thrust Sort', level=2)
+body(
+    "Task 4 implements a second GPU collision search strategy and benchmarks it "
+    "against Pollard's rho from Task 3. The goal is to identify which GPU algorithm "
+    "is fastest at each bit width, and where each one breaks down. The implementation "
+    "is in Final/Code/task4.cu and reuses the per-algorithm device hash functions "
+    "from Final/Code/gpu_hashes_narrow.cuh."
+)
+body(
+    "The algorithm has three phases. Phase 1 launches a parallel hash kernel that "
+    "computes batch_n hashes and stores (truncated_hash, input_index) pairs in two "
+    "device arrays. Phase 2 calls thrust::sort_by_key on the (hash, index) pairs, "
+    "sorted by the hash key. Phase 3 launches a parallel kernel that scans adjacent "
+    "elements of the sorted array and uses atomicMin to record the lowest input index "
+    "at which a duplicate hash was found. If no duplicate is found in a given batch, "
+    "the search retries with a new starting offset and accumulates the count."
+)
+body(
+    "Two memory modes are supported via a CLI flag. The default mode allocates the "
+    "device arrays with cudaMalloc, keeping all data in pure VRAM. The bits sweep "
+    "is capped at 48 because the working set (4x expected pairs at 16 bytes each, "
+    "plus Thrust's internal radix-sort scratch) saturates the 8 GB GPU at bits >= 52. "
+    "The unified-memory mode allocates the same arrays with cudaMallocManaged, so the "
+    "buffers are visible to both GPU and host and pages migrate across PCIe on demand. "
+    "This lets the sweep extend to bits=52 and bits=56, where the working set spills "
+    "into the SLURM-allocated 96 GB host RAM. The cost is that the sort becomes "
+    "PCIe-bound during page migrations."
+)
+body(
+    "Over-allocation is adaptive based on bit width. At bits <= 48 the binary "
+    "allocates 4x the expected count (about 99% chance of finding a collision in "
+    "one round). At bits=52 it allocates 2x (about 86% find rate per round). At "
+    "bits=56 it allocates 1x (about 63% find rate per round, averaging 1.6 rounds). "
+    "Lower over-allocation factors trade higher retry-driven variance for smaller "
+    "working sets, which matters because the sort working set scales as the bit "
+    "width grows. bits=64 was attempted in unified mode with 0.5x allocation but "
+    "thrust::sort_by_key crashed inside its temp-buffer allocation on every trial "
+    "and was dropped from the sweep."
+)
+body(
+    "Each algorithm-bits combination runs 10 trials in both memory modes. The "
+    "geometric retry distribution at sub-1x allocation has variance comparable to "
+    "its mean, so single-trial measurements are not representative. Reported numbers "
+    "are median across the 10 trials, with IQR error bars on the time-vs-bits plots."
+)
+
 # 3. Results
 heading('3. Overview of Results')
 
