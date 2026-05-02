@@ -150,9 +150,21 @@ for ax, algo in zip(axes, algos):
 
     dev_bits = [b for b in sorted(t4_dev.get(algo, {})) if b > 16]  # skip warmup
     if dev_bits:
-        ax.plot(dev_bits, [t4_dev[algo][b][0] for b in dev_bits],
-                "o-", color="#c44e52", linewidth=2, markersize=7,
-                label="Thrust sort (VRAM)")
+        med_y = [t4_dev[algo][b][0] for b in dev_bits]
+        # If multi-trial data, show IQR whiskers
+        if any(t4_dev_raw[algo][b].get('multi', False) for b in dev_bits):
+            q1y, q3y = [], []
+            for b in dev_bits:
+                q1, q3 = iqr(t4_dev_raw[algo][b]['ms_list'])
+                q1y.append(q1); q3y.append(q3)
+            yerr_lo = [m - q1 for m, q1 in zip(med_y, q1y)]
+            yerr_hi = [q3 - m for m, q3 in zip(med_y, q3y)]
+            ax.errorbar(dev_bits, med_y, yerr=[yerr_lo, yerr_hi],
+                        fmt="o-", color="#c44e52", linewidth=2, markersize=7,
+                        capsize=4, label="Thrust sort (VRAM, median ± IQR)")
+        else:
+            ax.plot(dev_bits, med_y, "o-", color="#c44e52", linewidth=2,
+                    markersize=7, label="Thrust sort (VRAM)")
 
     uni_bits = [b for b in sorted(t4_uni.get(algo, {})) if b > 16]
     if uni_bits:

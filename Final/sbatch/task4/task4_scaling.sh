@@ -9,11 +9,15 @@
 
 # Task 4 — GPU collision search via Thrust parallel sort
 #
-# Two memory modes, with extra trials for the high-variance unified mode:
-#   --device  : pure VRAM, capped at bits=48. Single trial (deterministic).
-#   --unified : cudaMallocManaged. 10 trials each because retry-driven
-#               variance is significant at bits >= 52 (geometric retry
-#               distribution from sub-1× over-allocation factor).
+# Two memory modes, both with 10 trials for consistent methodology:
+#   --device  : pure VRAM, capped at bits=48. 10 trials — device mode runs
+#               are cheap (<1 sec total) so trial repetition is essentially
+#               free, and the residual variance from retry geometry (~1.8%
+#               miss rate at 4× allocation) plus GPU clock/scheduler jitter
+#               is worth characterizing.
+#   --unified : cudaMallocManaged. 10 trials — geometric retry distribution
+#               from sub-1× over-allocation at bits >= 52 makes single-trial
+#               results unrepresentative.
 #
 # Adaptive over-allocation: 4×/2×/1×/0.5× for bits in {≤48, 52, 56, 64}.
 # Need --mem=96G on the host for the bits>=56 unified-memory spill area.
@@ -42,13 +46,18 @@ nvcc -O3 -std=c++17 \
     -o Final/task4 \
     Final/Code/task4.cu
 
-echo "=== Running --device (single trial, bits 16..48) ==="
-./Final/task4 --device | tee "$DEV"
+echo "=== Running --device (${N_TRIALS} trials, bits 16..48) ==="
+echo "# trial mode algo bits count ms expected" > "$DEV"
+for trial in $(seq 1 $N_TRIALS); do
+    echo "  device trial $trial / $N_TRIALS"
+    ./Final/task4 --device 2>/dev/null \
+        | awk -v t=$trial '/^[a-z]/ {print t, $0}' >> "$DEV"
+done
 
 echo "=== Running --unified (${N_TRIALS} trials, bits 16..64) ==="
 echo "# trial mode algo bits count ms expected" > "$UNI"
 for trial in $(seq 1 $N_TRIALS); do
-    echo "  trial $trial / $N_TRIALS"
+    echo "  unified trial $trial / $N_TRIALS"
     ./Final/task4 --unified 2>/dev/null \
         | awk -v t=$trial '/^[a-z]/ {print t, $0}' >> "$UNI"
 done

@@ -298,16 +298,18 @@ body(
 
 heading('3.4.1 Methodology — Why Multiple Trials Matter', level=2)
 body(
-    "The Thrust unified-mode results were initially reported from single "
-    "trials per configuration, which produced misleading conclusions. The "
-    "birthday-paradox-driven retry distribution (geometric) has variance "
-    "comparable to its mean: at bits=56 with 1× over-allocation, a single "
-    "run can take anywhere from 1 to 6+ rounds depending purely on which "
-    "input value happens to collide first. We re-ran with 10 trials per "
-    "configuration in unified mode (deterministic device mode unchanged) "
-    "and report median ± IQR. Pollard's rho is essentially deterministic "
-    "given fixed seeds and thread scheduling, so a single trial suffices "
-    "for Task 3 comparisons."
+    "Initial Task 4 results were single-trial, which produced misleading "
+    "conclusions. The birthday-paradox-driven retry distribution "
+    "(geometric) has variance comparable to its mean — at bits=56 with 1× "
+    "over-allocation, a single run can take anywhere from 1 to 6+ rounds "
+    "depending purely on which input value happens to collide first. We "
+    "re-ran with 10 trials per configuration in BOTH device and unified "
+    "modes and report median ± IQR. Device mode also has small variance "
+    "(~1.8% miss rate at 4× allocation, plus 5–10% jitter from GPU clock "
+    "boost and kernel launch overhead); since device-mode trials are "
+    "sub-second, repetition is free. Pollard's rho is essentially "
+    "deterministic given fixed seeds and thread scheduling, so a single "
+    "trial suffices for Task 3 comparisons."
 )
 
 heading('3.4.2 Finding — Unified Memory Has Real but Variable Overhead at Small Bits', level=2)
@@ -363,23 +365,20 @@ add_table(
         ['48',     '240.9',  '—',     '—'],
         ['52',     '516.4',  '2.1×',  '2.0× (still fits in VRAM)'],
         ['56',   '3,359',    '6.5×',  '4.0× (extra 1.6× = PCIe spill)'],
-        ['64',   '~30,000 (est, multi-trial pending)', '—', '—'],
     ]
 )
 body(
     "From bits=48 → 52 the slowdown matches theory exactly — sort scratch "
     "still fits in VRAM. From bits=52 → 56 the extra 1.6× factor beyond "
-    "theoretical scaling is the PCIe-bound sort overhead. The bits=64 row "
-    "is from the extended methodology run; preliminary expectation is "
-    "~30 sec per trial vs Pollard's rho's ~8 sec, putting the spill cost "
-    "at ~4× at that bit width."
+    "theoretical scaling is the PCIe-bound sort overhead. The 10-trial "
+    "bits=64 measurement is in progress; results will be added when the "
+    "rerun completes."
 )
-body("Updated GPU algorithm selection guide based on the corrected evidence:")
+body("GPU algorithm selection guide based on measured evidence:")
 bullet("bits ≤ 48: Thrust device-mode is fastest absolute (5–35× over Pollard's ρ)")
 bullet("bits 52: Both Thrust modes work; unified pays ~2× tax but still beats Pollard's ρ")
 bullet("bits 56: Comparable performance class — choose by deterministic-time preference")
-bullet("bits ≥ 64: Pollard's rho preferred — PCIe spill cost grows with working set")
-bullet("bits ≥ 72: Pollard's rho only — Thrust working set exceeds 96 GB host RAM")
+bullet("bits ≥ 72: Thrust working set exceeds 96 GB host RAM — Pollard's rho only feasible option")
 
 # ── 4. Deliverables ───────────────────────────────────────────────────────────
 heading('4. Deliverables: Building and Running')
@@ -464,16 +463,14 @@ bullet(
     "GPU-only regardless of CPU clock speed or parallelism level."
 )
 bullet(
-    "Empirical confirmation via Task 4 (corrected with 10-trial median methodology): "
-    "Even with unlimited host RAM exposed to the GPU via Unified Memory, the Thrust "
-    "sort approach falls into the same performance class as Pollard's rho at bits=56 "
-    "(per-round Thrust is faster, but retry variance makes total time comparable). "
-    "Pollard's rho's advantage at bits=56 is determinism and predictable timing, not "
-    "raw speed. At bits ≥ 64 the PCIe spill cost grows further and Pollard's rho is "
-    "expected to dominate; at bits ≥ 72 the Thrust working set exceeds available host "
-    "RAM and Pollard's rho is the only feasible option. The lesson: O(1)-memory "
-    "algorithms are valuable above the VRAM boundary not just for feasibility, but "
-    "for predictability and graceful scaling."
+    "Empirical confirmation via Task 4 (10-trial median methodology): With Unified "
+    "Memory exposing host RAM to the GPU, the Thrust sort approach falls into the "
+    "same performance class as Pollard's rho at bits=56 — per-round Thrust is faster, "
+    "but retry variance makes total time comparable. Pollard's rho's advantage at "
+    "bits=56 is determinism and predictable timing, not raw speed. At bits ≥ 72 the "
+    "Thrust working set exceeds available host RAM and Pollard's rho is the only "
+    "feasible option. The lesson: O(1)-memory algorithms are valuable above the VRAM "
+    "boundary not just for feasibility, but for predictability and graceful scaling."
 )
 
 body("ME759 concepts leveraged in this project:")

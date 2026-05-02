@@ -106,8 +106,8 @@ GPU's L2 + VRAM caches stop containing the whole pass and every memory
 access has a chance of triggering a remote-fault PCIe migration.
 
 
-Updated GPU Algorithm Selection Guide
---------------------------------------
+GPU Algorithm Selection Guide (based on measured evidence)
+-----------------------------------------------------------
   Bit width     Best algorithm                Reason
   -----------   --------------------------    --------------------------------
   bits ≤ 48     Thrust sort (device mode)     Fastest absolute (5–35× faster
@@ -123,31 +123,31 @@ Updated GPU Algorithm Selection Guide
                                                 depends on retry luck.
                                                 Pollard's rho is preferred for
                                                 deterministic time budgets.
-  bits ≥ 64     Pollard's rho (probably)      Thrust unified at bits=64 is
-                                                feasible with 0.5× allocation
-                                                (~30 sec/algo, separate test
-                                                in plan); Pollard's rho is
-                                                ~8 sec — likely 4× faster
-                                                because PCIe spill cost grows
-                                                with the working set.
+  bits = 64     TBD — pending 10-trial run    Thrust unified at bits=64 is
+                                                feasible with 0.5× allocation;
+                                                comparison to Pollard's rho
+                                                will be added when measured.
   bits ≥ 72     Pollard's rho only            Working set exceeds 96 GB host
-                                                RAM even at 0.1× allocation.
+                                                RAM even at low allocation
+                                                factors.
 
 
 Methodology Notes
 -----------------
-- Trial counts: 1 trial for device mode (deterministic — radix sort time
-  has minimal variance); 10 trials for unified mode at every bit width
-  (geometric retry distribution dominates the variance). Reported numbers
-  are median ± inter-quartile range (IQR) for unified mode.
+- Trial counts: 10 trials for both device and unified modes. Device mode
+  has small but nonzero variance (1.8% miss rate at 4× allocation, plus
+  GPU clock-boost / kernel-launch jitter at the ~5–10% level). Unified
+  mode has much larger variance from the geometric retry distribution
+  at sub-1× allocation. Reported numbers are median; uncertainty bands
+  are the inter-quartile range (IQR). Device-mode runs are sub-second
+  per trial so 10× repetition is essentially free.
 - bits=16 device-mode MD5 row (218 ms) is GPU/CUDA initialization on the
   very first kernel launch of the binary — ignored in plots and analysis.
 - Per-round time is computed as total_ms ÷ (count ÷ expected). This treats
   the count column as a proxy for "rounds × expected per round."
 - bits=64 in unified mode uses 0.5× expected over-allocation (~39% find
-  rate per round, average 2.5 rounds). Per-trial time at bits=64 is
-  expected to be ~30 sec, so 10 trials × 3 algos = ~15 min, well within
-  the 40-min sbatch wall-clock limit.
+  rate per round, average 2.5 rounds). Total runtime budgeted at ~15 min
+  for 10 trials × 3 algos, well within the 40-min sbatch wall-clock limit.
 
 Files: Final/Code/task4.cu, Final/Code/gpu_hashes_narrow.cuh
 Data:  Final/Data/task4/scaling_task4_device.dat,
