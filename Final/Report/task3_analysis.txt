@@ -5,7 +5,7 @@ Overview
 --------
 This task searches for collisions in truncated versions of MD5, SHA-1, and SHA-256.
 A "truncated collision" means two distinct inputs whose hash outputs agree in the
-lowest N bits. We sweep N in {16, 24, 32, 40, 48, 56, 64, 72, 80} and compare three
+lowest N bits. I sweep N in {16, 24, 32, 40, 48, 56, 64, 72, 80} and compare three
 implementations: CPU serial, CPU parallel (OpenMP), and GPU (Pollard's rho).
 CPU and OpenMP run for bits ≤ 56 only (memory constraint); bits=64, 72, and 80
 are GPU-only to demonstrate continued GPU scaling where CPU is infeasible.

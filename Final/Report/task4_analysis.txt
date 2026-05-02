@@ -67,7 +67,7 @@ Initial framing was wrong. Per-round measurements at bits=56:
 
 Per-round Thrust unified time is FASTER than Pollard's rho's deterministic
 single-launch time for all three algorithms (560–1,161 ms vs Pollard's
-1,930–2,375 ms). The bits=56 results vary wildly because we used 1×
+1,930–2,375 ms). The bits=56 results vary wildly because I used 1×
 over-allocation, which gives only ~63% find rate per round — total time
 is dominated by retry luck:
 
@@ -158,7 +158,7 @@ Methodology Notes
   (~34 GB working set per round). Every invocation died inside
   thrust::sort_by_key with a temp-buffer allocation failure — Thrust's
   internal radix-sort scratch space at this batch size could not be
-  satisfied even with 96 GB host RAM available. We added try/catch around
+  satisfied even with 96 GB host RAM available. I added try/catch around
   the sort call so the binary marks the row as -1 and continues to the
   next configuration; bits=64 was subsequently dropped from the unified
   bits sweep. Pollard's rho is the only working approach at bits >= 64.

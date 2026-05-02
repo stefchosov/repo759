@@ -357,7 +357,7 @@ body(
     "The birthday-paradox-driven retry distribution (geometric) has variance "
     "comparable to its mean. At bits=56 with 1x over-allocation, a single run can take "
     "anywhere from 1 to 6 or more rounds depending purely on which input value happens "
-    "to collide first. We re-ran with 10 trials per configuration in both device and "
+    "to collide first. I re-ran with 10 trials per configuration in both device and "
     "unified modes and report median with IQR error bars. Device mode also has small "
     "variance: about a 1.8% miss rate at 4x allocation, plus 5% to 10% jitter from GPU "
     "clock boost and kernel launch overhead. Since device-mode trials are sub-second, "
