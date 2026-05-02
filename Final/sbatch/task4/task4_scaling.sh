@@ -2,22 +2,26 @@
 #SBATCH -p instruction
 #SBATCH -J task4_scaling
 #SBATCH -o Final/sbatch/task4/logs/task4_scaling_%j.out
-#SBATCH -t 0-00:30:00
+#SBATCH -t 0-00:40:00
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --mem=96G
 
 # Task 4 — GPU collision search via Thrust parallel sort
-# Runs two modes back-to-back:
-#   --device  : pure VRAM, capped at bits=48 (working set fits in 8 GB GPU)
-#   --unified : cudaMallocManaged, pages spill to host RAM on demand,
-#               extends sweep to bits in {52, 56} to demonstrate the
-#               PCIe-bound performance inversion vs Pollard's rho.
-# Need --mem=96G on the host because the unified-memory sort spills there.
+#
+# Two memory modes, with extra trials for the high-variance unified mode:
+#   --device  : pure VRAM, capped at bits=48. Single trial (deterministic).
+#   --unified : cudaMallocManaged. 10 trials each because retry-driven
+#               variance is significant at bits >= 52 (geometric retry
+#               distribution from sub-1× over-allocation factor).
+#
+# Adaptive over-allocation: 4×/2×/1×/0.5× for bits in {≤48, 52, 56, 64}.
+# Need --mem=96G on the host for the bits>=56 unified-memory spill area.
 #
 # Produces:
-#   Final/Data/task4/scaling_task4_device.dat
-#   Final/Data/task4/scaling_task4_unified.dat
+#   Final/Data/task4/scaling_task4_device.dat  (1 trial per row)
+#   Final/Data/task4/scaling_task4_unified.dat (10 trials per row, prefixed
+#                                                with trial index)
 
 set -e
 cd "$(git -C "$SLURM_SUBMIT_DIR" rev-parse --show-toplevel)"
@@ -25,6 +29,7 @@ cd "$(git -C "$SLURM_SUBMIT_DIR" rev-parse --show-toplevel)"
 mkdir -p Final/Data/task4
 DEV=Final/Data/task4/scaling_task4_device.dat
 UNI=Final/Data/task4/scaling_task4_unified.dat
+N_TRIALS=10
 
 echo "=== Task 4 Thrust GPU collision scaling — $(date) ==="
 echo "Host: $(hostname)"
@@ -37,10 +42,17 @@ nvcc -O3 -std=c++17 \
     -o Final/task4 \
     Final/Code/task4.cu
 
-echo "=== Running --device (bits 16..48, 4× allocation) ==="
+echo "=== Running --device (single trial, bits 16..48) ==="
 ./Final/task4 --device | tee "$DEV"
 
-echo "=== Running --unified (bits 16..56, adaptive 4×/2×/1× allocation) ==="
-./Final/task4 --unified | tee "$UNI"
+echo "=== Running --unified (${N_TRIALS} trials, bits 16..64) ==="
+echo "# trial mode algo bits count ms expected" > "$UNI"
+for trial in $(seq 1 $N_TRIALS); do
+    echo "  trial $trial / $N_TRIALS"
+    ./Final/task4 --unified 2>/dev/null \
+        | awk -v t=$trial '/^[a-z]/ {print t, $0}' >> "$UNI"
+done
 
 echo "=== Done ==="
+echo "Device data: $(wc -l < $DEV) lines"
+echo "Unified data: $(wc -l < $UNI) lines"

@@ -17,8 +17,9 @@
 //
 // Adaptive over-allocation factor (controls retry rate):
 //   bits <= 48: 4× expected — one-shot, ~99.9% find rate
-//   bits = 52:  2× expected — ~63% find rate per round, avg 1.6 rounds
-//   bits >= 56: 1× expected — ~50% find rate per round, avg 2× rounds
+//   bits = 52:  2× expected — ~86% find rate per round, avg 1.16 rounds
+//   bits = 56:  1× expected — ~63% find rate per round, avg 1.59 rounds
+//   bits = 64:  0.5× expected — ~39% find rate per round, avg 2.5 rounds
 //
 // Output columns: mode  algo  bits  thrust_count  thrust_ms  expected
 //
@@ -82,10 +83,13 @@ static T* alloc_buf(size_t n, bool unified) {
 
 // ── Adaptive over-allocation factor ──────────────────────────────────────────
 
-static uint64_t batch_multiplier(int bits) {
-    if (bits <= 48) return 4;
-    if (bits <= 52) return 2;
-    return 1;
+// Returns (numerator, denominator) so we can express 0.5× without floats.
+struct AllocFactor { uint64_t num, den; };
+static AllocFactor batch_factor(int bits) {
+    if (bits <= 48) return {4, 1};
+    if (bits <= 52) return {2, 1};
+    if (bits <= 56) return {1, 1};
+    return {1, 2};   // bits >= 64: 0.5× expected
 }
 
 // ── Thrust collision search ──────────────────────────────────────────────────
@@ -94,8 +98,8 @@ static void thrust_collision(int algo, int bits, bool unified,
                              float *ms_out, uint64_t *count_out) {
     const uint64_t hash_mask = (bits < 64) ? ((1ull << bits) - 1ull) : ~0ull;
     const uint64_t expected  = (uint64_t)(sqrt(M_PI / 2.0) * pow(2.0, bits / 2.0));
-    const uint64_t mult      = batch_multiplier(bits);
-    const uint64_t batch_n   = std::max((uint64_t)4096, expected * mult);
+    const AllocFactor f      = batch_factor(bits);
+    const uint64_t batch_n   = std::max((uint64_t)4096, expected * f.num / f.den);
 
     *count_out = 0;
     bool     found = false;
@@ -180,8 +184,8 @@ int main(int argc, char *argv[]) {
     // Wider sweep when running unified mode — the whole point is to push past VRAM
     static const int   bits_dev[]   = {16, 24, 32, 40, 48};
     static const int   N_DEV        = 5;
-    static const int   bits_uni[]   = {16, 24, 32, 40, 48, 52, 56};
-    static const int   N_UNI        = 7;
+    static const int   bits_uni[]   = {16, 24, 32, 40, 48, 52, 56, 64};
+    static const int   N_UNI        = 8;
 
     bool unified = false;
     int  arg_i   = 1;

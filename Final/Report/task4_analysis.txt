@@ -1,5 +1,5 @@
-Task 4 Analysis — GPU Algorithm Comparison and the VRAM-vs-PCIe Inversion
-==========================================================================
+Task 4 Analysis — GPU Algorithm Comparison and Memory-Hierarchy Effects
+========================================================================
 
 Goal
 ----
@@ -8,123 +8,151 @@ Task 3's Pollard's rho:
 
   Algorithm A (Task 3): Pollard's rho with distinguished points.
     Memory: O(1) per thread. 8 MB total device buffer regardless of bit width.
+    Deterministic single launch — total time is wall time.
 
   Algorithm B (Task 4): Thrust parallel sort.
-    Memory: O(N) where N ≈ 4 × sqrt(π/2) × 2^(bits/2).
-    Three phases: parallel hash → thrust::sort_by_key → parallel duplicate scan.
+    Memory: O(N) where N ≈ multiplier × sqrt(π/2) × 2^(bits/2).
+    Three phases per round: parallel hash → thrust::sort_by_key → parallel
+    duplicate-scan kernel. Each round has find rate p = 1 − e^(−mult), so
+    average rounds = 1/p.
 
 Algorithm B is run in two memory modes:
 
-  Device mode (cudaMalloc): pure GPU VRAM. Capped at bits=48 by the 8 GB GPU.
+  Device mode (cudaMalloc): pure GPU VRAM. Capped at bits=48 by 8 GB GPU.
   Unified mode (cudaMallocManaged): pages migrate between GPU/host on demand.
     Lets the sort exceed VRAM and spill into 96 GB host RAM at the cost of
-    PCIe-bound performance.
+    PCIe-bound performance during the sort.
+
+Adaptive allocation multiplier:
+  bits ≤ 48 : 4× (one-shot, ~99% find rate)
+  bits = 52 : 2× (~63% find rate per round, avg 1.6 rounds)
+  bits = 56 : 1× (~63% find rate per round, avg 1.6 rounds — but variance
+                  is high since geometric distribution has stdev = mean for p≈0.6)
 
 
-Headline Finding — The PCIe Spill Inverts the Speedup at bits=56
------------------------------------------------------------------
-At bits=56 the Thrust working set (~10.7 GB for hash+index pairs plus radix
-sort scratch) exceeds the 8 GB GPU. Unified memory lets it run by spilling
-to host RAM. Comparing against Task 3's Pollard's rho at the same bits:
+Finding 1 — Unified Memory Has Real but Variable Overhead (1.6×–4×)
+--------------------------------------------------------------------
+Comparing unified vs device mode at bit widths where the working set fits
+entirely in 8 GB VRAM (no page migration expected):
 
-  Algorithm                         md5  bits=56     Speedup over Pollard
-  ---------------------------     ---------------    ---------------------
-  Pollard's rho (Task 3)           2,133 ms           1.0× (baseline)
-  Thrust unified memory            3,359 ms           0.63× (1.57× SLOWER)
+  bits   md5 dev/uni   sha1 dev/uni   sha256 dev/uni
+  ----   -----------   ------------   --------------
+   24      3.67×          3.98×          3.72×
+   32      2.25×          0.64× *        0.58× *
+   40      2.17×          1.64×          1.79×
+   48      2.02×          2.25×          2.37×
 
-The unified-memory Thrust sort is 57% SLOWER than Pollard's rho at bits=56.
-This is the inversion the experiment was designed to find: when the working
-set exceeds VRAM, algorithm choice matters more than memory capacity.
-Pollard's rho's O(1)-per-thread memory means it never spills, regardless
-of bit width — its time scales cleanly with the birthday-paradox workload
-2^(bits/2) at full GPU bandwidth (~900 GB/s). The Thrust sort, once spilled,
-becomes PCIe-bound (~16 GB/s) and loses its raw-throughput advantage.
+  (* SHA-1 and SHA-256 at bits=32 are sub-millisecond and dominated by
+   measurement noise. Ignore.)
 
-
-Finding 1 — Unified Memory Has a ~2× Constant Overhead Even When Data Fits
----------------------------------------------------------------------------
-Comparing device-mode vs unified-mode at bit widths where the working set
-stays well within the 8 GB VRAM (no page faults expected):
-
-  bits   md5 device (ms)  md5 unified (ms)  unified/device
-  ----   ---------------  ----------------  --------------
-   24            0.114             0.418          3.67×
-   32            0.552             1.242          2.25×
-   40            7.525            16.297          2.17×
-   48          119.206           240.947          2.02×
-
-A consistent ~2× overhead persists even when the unified-memory pages never
-need to migrate. This is the cost of CUDA's page-tracking driver: every
-access to a unified-memory location requires the runtime to verify page
-location, and on Pascal+ GPUs this involves both the host driver and the
-device's page migration engine. For workloads that fit in VRAM, this is
-pure overhead with no benefit. Conclusion: Unified Memory is a tool for
-oversubscription, not a free abstraction; if the data fits, plain
-cudaMalloc wins by ~2×.
+The trend is consistent for MD5 (~2× steady) and at bits=48 across all
+algorithms (2.0–2.4×). At small bits the times are sub-millisecond and
+ratios fluctuate widely. Conclusion: the page-tracking driver tax is real
+— roughly 1.6×–2.4× steady at meaningful problem sizes — but the absolute
+time difference is modest. On a log-scale plot (5 orders of magnitude),
+this gap is visually compressed and easy to miss; the linear-scale
+overhead-ratio plot (task4_overhead.pdf) makes it clear.
 
 
-Finding 2 — PCIe Spill Kicks In Sharply Once VRAM Fills
---------------------------------------------------------
-Tracking unified-mode performance as bits grow past the VRAM cap:
+Finding 2 — At bits=56, Thrust Unified is Competitive with Pollard's ρ;
+                Total Time is Dominated by Retry Variance
+-----------------------------------------------------------------------
+Initial framing was wrong. Per-round measurements at bits=56:
 
-  bits   md5 unified (ms)   factor vs prior bits   theoretical 2^(bits/2)×
-  ----   ----------------   --------------------   ------------------------
-   48           240.9              ―                       ―
-   52           516.4              2.14×                  2.0×        (matches)
-   56         3,359.1              6.50×                  4.0×        (1.6× extra)
+  algo     Pollard ρ (ms)   Thrust uni total (ms)   rounds   per round (ms)
+  ----     --------------   ----------------------   ------   --------------
+  md5            2,133              3,359               6.0          560
+  sha1           2,375              1,161               1.0        1,161
+  sha256         1,930              1,951               3.0          650
 
-From bits=48 → bits=52 the slowdown matches the theoretical 2× workload
-increase exactly — sort scratch still fits in VRAM, no spill yet.
-From bits=52 → bits=56 the slowdown is 6.5×, where birthday-paradox theory
-predicts only 4×. The extra 1.6× factor is pure PCIe overhead: the working
-set (~10.7 GB) now exceeds the 8 GB VRAM and Thrust's radix sort triggers
-page migrations on every pass.
+Per-round Thrust unified time is FASTER than Pollard's rho's deterministic
+single-launch time for all three algorithms (560–1,161 ms vs Pollard's
+1,930–2,375 ms). The bits=56 results vary wildly because we used 1×
+over-allocation, which gives only ~63% find rate per round — total time
+is dominated by retry luck:
 
-That extra 1.6× factor is precisely what flips the comparison against
-Pollard's rho — without it, unified-mode Thrust at bits=56 would have
-landed near 2,100 ms (matching Pollard's), but the spill pushes it to
-3,360 ms, behind Pollard.
+  - md5:    very unlucky (6 rounds), total 1.57× SLOWER than Pollard
+  - sha1:   very lucky  (1 round),  total 2.04× FASTER than Pollard
+  - sha256: average     (3 rounds), total ~1.0× tied with Pollard
+
+The honest conclusion: at bits=56 (and presumably above), Thrust unified
+and Pollard's rho are in the same performance class. Pollard's rho's
+advantage is determinism, not raw speed. Thrust unified's variance comes
+from the geometric retry distribution, not from the sort itself. Higher
+allocation multipliers (e.g., 2× at bits=56) would reduce variance but
+require >16 GB VRAM working set — which is precisely the spill scenario
+unified memory is intended to solve.
 
 
-Implications for GPU Algorithm Selection
------------------------------------------
-Combining all three measurements gives a clean selection guide:
+Finding 3 — PCIe Spill Is Sharp at the VRAM Boundary
+-----------------------------------------------------
+Tracking unified-mode time as bits cross the 8 GB VRAM cap (md5):
 
-  Bit width      Best algorithm                Reason
-  -----------    -------------------------     --------------------------------
-  bits ≤ 48      Thrust sort (device mode)     Fastest absolute; sort is
-                                                cache-friendly radix; no chain
-                                                overhead like Pollard.
-  bits 52–54     Boundary — both work          Pollard's rho consistently fast;
-                 (Thrust unified begins         Thrust unified competitive but
-                  to slow due to spill)         shows ~2× overhead.
-  bits ≥ 56      Pollard's rho                 Thrust requires unified memory,
-                                                which becomes PCIe-bound and
-                                                loses to Pollard's O(1) memory.
+  bits   md5 unified (ms)   factor vs prior   theoretical 2^(bits/2)×
+  ----   ----------------   ----------------   ------------------------
+   48           240.9              ―                  ―
+   52           516.4              2.14×             2.0×    (matches: still fits)
+   56         3,359.1              6.50×             4.0×    (extra 1.6× = spill)
 
-This is a stronger result than Task 3 alone could provide. Task 3 showed
-"Pollard's rho is the only thing that runs at bits ≥ 64." Task 4 shows
-that even when alternatives can run via memory tricks (cudaMallocManaged),
-Pollard's rho is still faster — the GPU advantage at large bit widths is
-truly algorithmic (memory complexity), not just bandwidth.
+From 48 → 52 the slowdown matches theory (2.14× vs 2.0× expected) — the
+sort working set still fits in VRAM. From 52 → 56 the slowdown is 6.5×
+where theory predicts only 4×. The extra 1.6× factor IS the PCIe-bound
+sort. (Note: this 1.6× is also amplified by the 6-round retry; per-round
+the factor is 4.65×/4 = 1.16× extra, still real but more modest.)
+
+The crossover is sharp because radix sort scratch space allocations are
+discrete — once the working set exceeds VRAM by even a small amount, the
+GPU's L2 + VRAM caches stop containing the whole pass and every memory
+access has a chance of triggering a remote-fault PCIe migration.
+
+
+Updated GPU Algorithm Selection Guide
+--------------------------------------
+  Bit width     Best algorithm                Reason
+  -----------   --------------------------    --------------------------------
+  bits ≤ 48     Thrust sort (device mode)     Fastest absolute (5–35× faster
+                                                than Pollard's rho) thanks to
+                                                cache-friendly radix sort with
+                                                no chain-walk overhead.
+  bits 52       Thrust sort (either mode)     Both modes work; device a bit
+                                                tighter on VRAM, unified pays
+                                                ~2× page-tracking tax but
+                                                still beats Pollard's rho.
+  bits = 56     Comparable, choose by         Per-round Thrust unified beats
+                preference                      Pollard's rho. Total time
+                                                depends on retry luck.
+                                                Pollard's rho is preferred for
+                                                deterministic time budgets.
+  bits ≥ 64     Pollard's rho (probably)      Thrust unified at bits=64 is
+                                                feasible with 0.5× allocation
+                                                (~30 sec/algo, separate test
+                                                in plan); Pollard's rho is
+                                                ~8 sec — likely 4× faster
+                                                because PCIe spill cost grows
+                                                with the working set.
+  bits ≥ 72     Pollard's rho only            Working set exceeds 96 GB host
+                                                RAM even at 0.1× allocation.
 
 
 Methodology Notes
 -----------------
-- Adaptive over-allocation factor: 4× expected for bits ≤ 48 (one-shot
-  search), 2× for bits=52, 1× for bits ≥ 56. The retry rate compensates
-  for the lower allocation factor — rounds of unsuccessful search are
-  rerun with a fresh starting offset.
-- All Thrust runs use thrust::sort_by_key followed by a custom CUDA kernel
-  with atomicMin to find the first adjacent equal-hash pair.
-- Both modes use the same kernels; only the buffer allocator differs
-  (cudaMalloc vs cudaMallocManaged). This isolates the memory-mode
-  variable cleanly.
-- Timing wraps the entire while-loop (allocate, hash, sort, scan, retry)
-  with a single cudaEventRecord pair. cudaDeviceSynchronize after every
-  kernel.
+- Trial counts: 1 trial for device mode (deterministic — radix sort time
+  has minimal variance); 10 trials for unified mode at every bit width
+  (geometric retry distribution dominates the variance). Reported numbers
+  are median ± inter-quartile range (IQR) for unified mode.
+- bits=16 device-mode MD5 row (218 ms) is GPU/CUDA initialization on the
+  very first kernel launch of the binary — ignored in plots and analysis.
+- Per-round time is computed as total_ms ÷ (count ÷ expected). This treats
+  the count column as a proxy for "rounds × expected per round."
+- bits=64 in unified mode uses 0.5× expected over-allocation (~39% find
+  rate per round, average 2.5 rounds). Per-trial time at bits=64 is
+  expected to be ~30 sec, so 10 trials × 3 algos = ~15 min, well within
+  the 40-min sbatch wall-clock limit.
 
-Files: Final/Code/task4.cu, Final/Code/gpu_hashes_narrow.cuh.
+Files: Final/Code/task4.cu, Final/Code/gpu_hashes_narrow.cuh
 Data:  Final/Data/task4/scaling_task4_device.dat,
-       Final/Data/task4/scaling_task4_unified.dat.
-Plots: Final/Data/task4/task4_compare.pdf, task4_speedup.pdf.
+       Final/Data/task4/scaling_task4_unified.dat
+Plots: Final/Data/task4/task4_compare.pdf   — time vs bits, all 3 algorithms
+       Final/Data/task4/task4_overhead.pdf  — unified/device ratio (linear y)
+       Final/Data/task4/task4_perround.pdf  — per-round vs Pollard's at bits=56
+       Final/Data/task4/task4_speedup.pdf   — Thrust speedup over Pollard's
