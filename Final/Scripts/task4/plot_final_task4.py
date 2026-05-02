@@ -218,60 +218,79 @@ fig.savefig("Final/Data/task4/task4_overhead.png", dpi=150)
 print("Saved Final/Data/task4/task4_overhead.pdf")
 plt.close(fig)
 
-# ── Plot 3.5: per-trial spread at bits >= 52 (boxplot or strip) ──────────────
-# Visualizes retry-driven variance in unified-mode runs at borderline-VRAM
-# bit widths. Only plotted if multi-trial data is available.
-high_bits = [52, 56, 64]
+# ── Plot 3.5: per-trial spread at bits >= 52 ────────────────────────────────
+# Strip plot showing every individual trial as a dot, with the median drawn
+# as a horizontal bar and Pollard's ρ as a green reference line. Clearer than
+# a boxplot at n=10, and avoids log-scale boxplot distortion.
+import numpy as np
+import random
+
+high_bits = [52, 56]   # configs that ran multiple trials
 have_multi = any(t4_uni_raw.get(a, {}).get(b, {}).get('multi', False)
                  for a in algos for b in high_bits if b in t4_uni_raw.get(a, {}))
 
 if have_multi:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=False)
-    fig.suptitle("Thrust Unified Memory: Per-trial Spread at High Bit Widths",
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5), sharey=False)
+    fig.suptitle("Thrust Unified Memory: Per-trial Spread vs Pollard's ρ",
                  fontsize=12, fontweight="bold")
+
+    rng = random.Random(759)
 
     for ax, algo in zip(axes, algos):
         positions = []
-        data = []
-        labels_x = []
+        labels_x  = []
+        max_y = 0.0
+
         for b in high_bits:
             if b not in t4_uni_raw.get(algo, {}): continue
             ms_list = t4_uni_raw[algo][b]['ms_list']
             if len(ms_list) < 2: continue
-            positions.append(len(positions) + 1)
-            data.append(ms_list)
-            labels_x.append(f"bits={b}\n(n={len(ms_list)})")
+            xpos = len(positions) + 1
+            positions.append(xpos)
+            labels_x.append(f"bits={b}")
 
-        if data:
-            bp = ax.boxplot(data, positions=positions, widths=0.5,
-                            patch_artist=True, showfliers=True)
-            for patch in bp['boxes']:
-                patch.set_facecolor("#8172b3")
-                patch.set_alpha(0.5)
-            # Overlay Pollard's rho horizontal lines for comparison
-            for i, b in enumerate([b for b in high_bits if b in t4_uni_raw.get(algo, {})]):
-                if b in t3[algo] and len(t4_uni_raw[algo][b]['ms_list']) >= 2:
-                    ax.hlines(t3[algo][b], positions[i] - 0.3, positions[i] + 0.3,
-                              colors="#55a868", linestyles="--", linewidth=2)
+            # Jittered scatter of individual trials
+            jitter = [xpos + (rng.random() - 0.5) * 0.15 for _ in ms_list]
+            ax.scatter(jitter, ms_list, color="#8172b3", alpha=0.7,
+                       s=40, edgecolors="white", linewidths=0.5, zorder=3)
+
+            # Median bar
+            med = median(ms_list)
+            ax.hlines(med, xpos - 0.25, xpos + 0.25,
+                      colors="#5a4a8a", linewidths=2.5, zorder=4)
+
+            # Pollard's ρ reference (deterministic single-run time)
+            if b in t3.get(algo, {}):
+                ax.hlines(t3[algo][b], xpos - 0.32, xpos + 0.32,
+                          colors="#55a868", linestyles="--", linewidth=2.5,
+                          zorder=2)
+
+            max_y = max(max_y, max(ms_list), t3.get(algo, {}).get(b, 0))
 
         ax.set_title(labels[algo], fontsize=12)
         ax.set_xticks(positions)
-        ax.set_xticklabels(labels_x, fontsize=9)
-        ax.set_yscale("log")
+        ax.set_xticklabels(labels_x, fontsize=10)
+        ax.set_xlim(0.5, len(positions) + 0.5 if positions else 1)
+        ax.set_ylim(0, max_y * 1.1 if max_y > 0 else 1)
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
         if not positions:
             ax.text(0.5, 0.5, "no multi-trial data", transform=ax.transAxes,
                     ha="center", va="center", fontsize=10, color="gray")
 
-    axes[0].set_ylabel("Time per run (ms)", fontsize=10)
-    # Single legend annotation
+    axes[0].set_ylabel("Time per trial (ms)", fontsize=10)
+
     from matplotlib.lines import Line2D
-    custom = [Line2D([0],[0], color="#8172b3", lw=8, alpha=0.5, label="Thrust unified (10 trials)"),
-              Line2D([0],[0], color="#55a868", linestyle="--", lw=2, label="Pollard's ρ (deterministic)")]
-    fig.legend(handles=custom, loc="lower center", ncol=2, fontsize=10,
+    custom = [
+        Line2D([0],[0], marker="o", color="w", markerfacecolor="#8172b3",
+               markersize=8, label="Thrust unified (one dot per trial, n=10)"),
+        Line2D([0],[0], color="#5a4a8a", lw=2.5, label="Thrust unified median"),
+        Line2D([0],[0], color="#55a868", linestyle="--", lw=2.5,
+               label="Pollard's ρ (deterministic)"),
+    ]
+    fig.legend(handles=custom, loc="lower center", ncol=3, fontsize=10,
                bbox_to_anchor=(0.5, -0.02))
-    fig.tight_layout(rect=[0, 0.05, 1, 1])
+    fig.tight_layout(rect=[0, 0.06, 1, 1])
     fig.savefig("Final/Data/task4/task4_trial_spread.pdf", dpi=150)
     fig.savefig("Final/Data/task4/task4_trial_spread.png", dpi=150)
     print("Saved Final/Data/task4/task4_trial_spread.pdf")
