@@ -370,15 +370,21 @@ add_table(
 body(
     "From bits=48 → 52 the slowdown matches theory exactly — sort scratch "
     "still fits in VRAM. From bits=52 → 56 the extra 1.6× factor beyond "
-    "theoretical scaling is the PCIe-bound sort overhead. The 10-trial "
-    "bits=64 measurement is in progress; results will be added when the "
-    "rerun completes."
+    "theoretical scaling is the PCIe-bound sort overhead. bits=64 was "
+    "attempted in unified mode with 0.5× allocation (~34 GB working set) "
+    "but every trial crashed inside thrust::sort_by_key with an "
+    "allocation failure for the radix-sort temp scratch space — Thrust's "
+    "internal allocator cannot satisfy that request even with 96 GB host "
+    "RAM exposed via Unified Memory. Pollard's rho runs cleanly at "
+    "bits=64 in ~8–10 sec, so the algorithmic-feasibility argument from "
+    "Task 3 is reinforced empirically: at bits=64 Pollard's rho is not "
+    "just faster, it is the only approach that runs at all."
 )
 body("GPU algorithm selection guide based on measured evidence:")
 bullet("bits ≤ 48: Thrust device-mode is fastest absolute (5–35× over Pollard's ρ)")
 bullet("bits 52: Both Thrust modes work; unified pays ~2× tax but still beats Pollard's ρ")
 bullet("bits 56: Comparable performance class — choose by deterministic-time preference")
-bullet("bits ≥ 72: Thrust working set exceeds 96 GB host RAM — Pollard's rho only feasible option")
+bullet("bits ≥ 64: Pollard's rho only — Thrust unified fails at bits=64 (sort scratch alloc), and at bits ≥ 72 the working set exceeds 96 GB host RAM regardless")
 
 # ── 4. Deliverables ───────────────────────────────────────────────────────────
 heading('4. Deliverables: Building and Running')

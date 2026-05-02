@@ -19,7 +19,9 @@
 //   bits <= 48: 4× expected — one-shot, ~99.9% find rate
 //   bits = 52:  2× expected — ~86% find rate per round, avg 1.16 rounds
 //   bits = 56:  1× expected — ~63% find rate per round, avg 1.59 rounds
-//   bits = 64:  0.5× expected — ~39% find rate per round, avg 2.5 rounds
+//   bits = 64:  not exposed — Thrust temp-buffer allocation fails on the
+//               test hardware. Pollard's rho remains the only viable
+//               approach at bits >= 64.
 //
 // Output columns: mode  algo  bits  thrust_count  thrust_ms  expected
 //
@@ -32,8 +34,10 @@
 #include <algorithm>
 #include <cuda_runtime.h>
 
+#include <stdexcept>
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
+#include <thrust/system_error.h>
 
 #include "gpu_hashes_narrow.cuh"
 
@@ -143,9 +147,23 @@ static void thrust_collision(int algo, int bits, bool unified,
         // Phase 2: sort by hash (works on raw pointers via thrust::device_ptr;
         // identical for cudaMalloc and cudaMallocManaged buffers — the latter
         // simply pages in/out across PCIe as the radix sort scans the array).
-        auto hkey = thrust::device_pointer_cast(d_hashes);
-        auto hval = thrust::device_pointer_cast(d_indices);
-        thrust::sort_by_key(hkey, hkey + batch_n, hval);
+        // Wrapped in try/catch because thrust may throw on temp-buffer alloc
+        // failure at very large batch sizes; we mark the run as failed and
+        // continue rather than crashing the entire binary.
+        try {
+            auto hkey = thrust::device_pointer_cast(d_hashes);
+            auto hval = thrust::device_pointer_cast(d_indices);
+            thrust::sort_by_key(hkey, hkey + batch_n, hval);
+        } catch (const std::exception &e) {
+            fprintf(stderr, "ERROR: thrust::sort_by_key failed at bits=%d, "
+                            "batch_n=%llu, mode=%s: %s\n",
+                    bits, (unsigned long long)batch_n,
+                    unified ? "unified" : "device", e.what());
+            cudaFree(d_hashes); cudaFree(d_indices); cudaFree(d_result);
+            cudaEventDestroy(ev0); cudaEventDestroy(ev1);
+            *ms_out = -1.0f;
+            return;
+        }
 
         // Phase 3: find duplicate
         unsigned long long sentinel = (unsigned long long)~0ull;
@@ -184,8 +202,11 @@ int main(int argc, char *argv[]) {
     // Wider sweep when running unified mode — the whole point is to push past VRAM
     static const int   bits_dev[]   = {16, 24, 32, 40, 48};
     static const int   N_DEV        = 5;
-    static const int   bits_uni[]   = {16, 24, 32, 40, 48, 52, 56, 64};
-    static const int   N_UNI        = 8;
+    // bits=64 attempted but consistently fails: thrust::sort_by_key on 2.15B
+    // elements requires ~34 GB of GPU-managed allocations plus scratch, which
+    // exceeds what cudaMallocManaged can satisfy on the test hardware.
+    static const int   bits_uni[]   = {16, 24, 32, 40, 48, 52, 56};
+    static const int   N_UNI        = 7;
 
     bool unified = false;
     int  arg_i   = 1;

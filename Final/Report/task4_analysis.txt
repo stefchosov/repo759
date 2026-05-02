@@ -123,10 +123,19 @@ GPU Algorithm Selection Guide (based on measured evidence)
                                                 depends on retry luck.
                                                 Pollard's rho is preferred for
                                                 deterministic time budgets.
-  bits = 64     TBD — pending 10-trial run    Thrust unified at bits=64 is
-                                                feasible with 0.5× allocation;
-                                                comparison to Pollard's rho
-                                                will be added when measured.
+  bits = 64     Pollard's rho only            Thrust unified at bits=64 was
+                                                attempted with 0.5× allocation
+                                                (~34 GB working set). Every
+                                                trial crashed inside
+                                                thrust::sort_by_key with a
+                                                temp-buffer allocation
+                                                failure. Even with 96 GB host
+                                                RAM available via Unified
+                                                Memory, Thrust's internal
+                                                radix-sort scratch cannot be
+                                                satisfied at this batch size.
+                                                Pollard's rho runs cleanly
+                                                in 8–10 sec at bits=64.
   bits ≥ 72     Pollard's rho only            Working set exceeds 96 GB host
                                                 RAM even at low allocation
                                                 factors.
@@ -145,9 +154,14 @@ Methodology Notes
   very first kernel launch of the binary — ignored in plots and analysis.
 - Per-round time is computed as total_ms ÷ (count ÷ expected). This treats
   the count column as a proxy for "rounds × expected per round."
-- bits=64 in unified mode uses 0.5× expected over-allocation (~39% find
-  rate per round, average 2.5 rounds). Total runtime budgeted at ~15 min
-  for 10 trials × 3 algos, well within the 40-min sbatch wall-clock limit.
+- bits=64 in unified mode was attempted with 0.5× expected over-allocation
+  (~34 GB working set per round). Every invocation died inside
+  thrust::sort_by_key with a temp-buffer allocation failure — Thrust's
+  internal radix-sort scratch space at this batch size could not be
+  satisfied even with 96 GB host RAM available. We added try/catch around
+  the sort call so the binary marks the row as -1 and continues to the
+  next configuration; bits=64 was subsequently dropped from the unified
+  bits sweep. Pollard's rho is the only working approach at bits >= 64.
 
 Files: Final/Code/task4.cu, Final/Code/gpu_hashes_narrow.cuh
 Data:  Final/Data/task4/scaling_task4_device.dat,
