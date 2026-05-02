@@ -270,27 +270,41 @@ body(
 heading('3.4 Task 4 — GPU Algorithm Comparison: Thrust Sort vs Pollard\'s rho', level=2)
 body(
     "Task 4 implements an alternative GPU collision search using thrust::sort_by_key "
-    "to compare against Task 3's Pollard's rho with distinguished points. The Thrust "
-    "approach is conceptually simpler: hash a batch of ~4 × expected inputs into device "
-    "arrays, sort by hash key, and scan for the first adjacent equal-hash pair. It is "
-    "fully GPU-resident with no CPU-side merge phase. The bit width is capped at 48 "
-    "because the sort working set (4 × expected × 16 bytes) saturates 8 GB GPU VRAM at "
+    "to compare against Task 3's Pollard's rho. Three-phase: hash a batch of inputs "
+    "into device arrays, sort by hash key, scan for first adjacent equal-hash pair. "
+    "Fully GPU-resident with no CPU-side merge phase. Two memory modes are tested:"
+)
+bullet(
+    "Device mode (cudaMalloc): pure VRAM. Capped at bits=48 because the sort working "
+    "set (4 × expected × 16 bytes) plus Thrust scratch saturates 8 GB GPU memory at "
     "bits ≥ 52."
 )
-body(
-    "Code: Final/Code/task4.cu uses Final/Code/gpu_hashes_narrow.cuh for the device "
-    "hash functions (shared with Task 3). Three CUDA kernels: hash_to_arrays (Phase 1), "
-    "thrust::sort_by_key (Phase 2), find_dup_kernel (Phase 3 — atomic-min on detected "
-    "duplicates). Output: Final/Data/task4/scaling_task4.dat. "
-    "Plots: Final/Data/task4/task4_compare.pdf and task4_speedup.pdf."
+bullet(
+    "Unified memory mode (cudaMallocManaged): the buffers are visible to both GPU "
+    "and host, with pages migrating across PCIe on demand. Lets us push the sweep "
+    "to bits=52 and bits=56 — the working set spills into host RAM (--mem=96G) "
+    "rather than OOMing — at the cost of PCIe-bound performance during sort."
 )
 body(
-    "Expected behavior: Thrust sort wins at small bit widths where the sort+scan is "
-    "fast and all data fits trivially in VRAM, with Pollard's rho's chain-walking "
-    "overhead dominating its small-bits time. As bits grow toward 48, the sort cost "
-    "(O(N log N) where N = 4 × 2^(bits/2)) grows faster than Pollard's rho, and the "
-    "two converge. At bits ≥ 52 only Pollard's rho is viable because the Thrust "
-    "working set exceeds VRAM."
+    "Adaptive over-allocation factor controls the per-round retry rate: 4× expected "
+    "for bits ≤ 48 (one-shot), 2× for bits=52, 1× for bits ≥ 56 (≈2 rounds on "
+    "average to find a collision)."
+)
+body(
+    "Expected behavior: at bits ≤ 48 the device-mode sort wins decisively (no "
+    "overhead from chain-walking, clean VRAM-resident radix sort). The unified-mode "
+    "results should match device-mode at small bits (data fits in VRAM, no faults), "
+    "then diverge dramatically at bits ≥ 52 where the working set exceeds VRAM and "
+    "PCIe transfers dominate the sort time. The hypothesis is that unified-mode "
+    "Thrust at bits=56 is significantly slower than Pollard's rho at the same bits, "
+    "demonstrating that O(1)-memory algorithms win when the working set exceeds "
+    "device memory regardless of how much host RAM is available — the GPU sort "
+    "becomes PCIe-bound (~16 GB/s) instead of VRAM-bound (~900 GB/s)."
+)
+body(
+    "Code: Final/Code/task4.cu (uses gpu_hashes_narrow.cuh for shared device hash "
+    "functions). Output: Final/Data/task4/scaling_task4_device.dat and "
+    "scaling_task4_unified.dat. Plots: task4_compare.pdf, task4_speedup.pdf."
 )
 
 # ── 4. Deliverables ───────────────────────────────────────────────────────────
