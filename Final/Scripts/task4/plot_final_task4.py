@@ -8,10 +8,10 @@
 #   Final/Data/task3/scaling_task3_*.dat        — Pollard's rho GPU times
 #
 # Produces:
-#   task4_compare.pdf   — time vs bits, all three algorithms (one panel per hash)
-#   task4_overhead.pdf  — unified/device overhead ratio (linear scale)
-#   task4_perround.pdf  — Thrust unified per-round time vs Pollard's rho at large bits
-#   task4_speedup.pdf   — Thrust speedup over Pollard's rho
+#   task4_compare.pdf      — time vs bits, all three algorithms (one panel per hash)
+#   task4_overhead.pdf     — unified/device overhead ratio (linear scale)
+#   task4_trial_spread.pdf — boxplot of per-trial times at bits>=52 vs Pollard's ρ
+#   task4_speedup.pdf      — Thrust speedup over Pollard's rho
 
 import os
 import sys
@@ -129,13 +129,6 @@ algos  = ["md5", "sha1", "sha256"]
 labels = {"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256"}
 colors = {"md5": "#4c72b0", "sha1": "#dd8452", "sha256": "#55a868"}
 
-# Helper: rounds = count / expected (each round computes batch = mult × expected
-# but mult varies by bits; use count/expected as a proxy for "work multiplier")
-def rounds_used(algo_data, bits):
-    if bits not in algo_data: return None
-    _, count, exp = algo_data[bits]
-    return count / exp if exp else None
-
 # ── Plot 1: time vs bits, three algorithms, log y ───────────────────────────
 fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
 fig.suptitle("Task 4: Pollard's ρ vs Thrust Sort (device & unified memory)",
@@ -223,57 +216,6 @@ fig.tight_layout()
 fig.savefig("Final/Data/task4/task4_overhead.pdf", dpi=150)
 fig.savefig("Final/Data/task4/task4_overhead.png", dpi=150)
 print("Saved Final/Data/task4/task4_overhead.pdf")
-plt.close(fig)
-
-# ── Plot 3: per-round Thrust unified time vs Pollard's rho at bits=56 ───────
-# Total wall time is misleading — Thrust unified at bits=56 uses 1× over-
-# allocation and incurs a variable retry count. The fair comparison is
-# per-round time vs Pollard's rho's deterministic single-launch time.
-fig, ax = plt.subplots(figsize=(8, 5))
-
-x = list(range(len(algos)))
-width = 0.30
-
-pol_56  = [t3.get(a, {}).get(56, 0) for a in algos]
-uni_56_total = [t4_uni.get(a, {}).get(56, (0,0,0))[0] for a in algos]
-uni_56_per   = []
-for a in algos:
-    entry = t4_uni.get(a, {}).get(56)
-    if entry is not None:
-        ms, count, exp = entry
-        rounds = max(1.0, count / exp) if exp else 1.0
-        uni_56_per.append(ms / rounds)
-    else:
-        uni_56_per.append(0)
-
-b1 = ax.bar([xi - width for xi in x], pol_56, width,
-            color="#55a868", label="Pollard's ρ (single deterministic run)")
-b2 = ax.bar(x, uni_56_total, width,
-            color="#8172b3", alpha=0.55,
-            label="Thrust unified (total, includes retries)")
-b3 = ax.bar([xi + width for xi in x], uni_56_per, width,
-            color="#8172b3", label="Thrust unified (per-round)")
-
-# Annotate retry counts
-for xi, a in zip(x, algos):
-    r = rounds_used(t4_uni.get(a, {}), 56)
-    if r is not None:
-        ax.text(xi, uni_56_total[algos.index(a)] * 1.02,
-                f"{r:.0f} rounds", ha="center", fontsize=8, color="#5a4a8a")
-
-ax.set_xticks(x)
-ax.set_xticklabels([labels[a] for a in algos])
-ax.set_ylabel("Time at bits=56 (ms)", fontsize=12)
-ax.set_title("Thrust Unified vs Pollard's ρ at bits=56\n"
-             "Per-round Thrust beats Pollard; total time depends on retry luck",
-             fontsize=11)
-ax.legend(fontsize=9)
-ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-ax.set_axisbelow(True)
-fig.tight_layout()
-fig.savefig("Final/Data/task4/task4_perround.pdf", dpi=150)
-fig.savefig("Final/Data/task4/task4_perround.png", dpi=150)
-print("Saved Final/Data/task4/task4_perround.pdf")
 plt.close(fig)
 
 # ── Plot 3.5: per-trial spread at bits >= 52 (boxplot or strip) ──────────────

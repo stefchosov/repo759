@@ -166,7 +166,9 @@ Methodology Notes
 Files: Final/Code/task4.cu, Final/Code/gpu_hashes_narrow.cuh
 Data:  Final/Data/task4/scaling_task4_device.dat,
        Final/Data/task4/scaling_task4_unified.dat
-Plots: Final/Data/task4/task4_compare.pdf   — time vs bits, all 3 algorithms
-       Final/Data/task4/task4_overhead.pdf  — unified/device ratio (linear y)
-       Final/Data/task4/task4_perround.pdf  — per-round vs Pollard's at bits=56
-       Final/Data/task4/task4_speedup.pdf   — Thrust speedup over Pollard's
+Plots: Final/Data/task4/task4_compare.pdf      — time vs bits, all 3 algorithms
+       Final/Data/task4/task4_overhead.pdf     — unified/device ratio (linear y)
+       Final/Data/task4/task4_trial_spread.pdf — per-trial boxplot at bits>=52
+                                                  with Pollard's ρ deterministic
+                                                  reference line
+       Final/Data/task4/task4_speedup.pdf      — Thrust speedup over Pollard's
