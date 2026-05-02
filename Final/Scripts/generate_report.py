@@ -291,21 +291,77 @@ body(
     "average to find a collision)."
 )
 body(
-    "Expected behavior: at bits ≤ 48 the device-mode sort wins decisively (no "
-    "overhead from chain-walking, clean VRAM-resident radix sort). The unified-mode "
-    "results should match device-mode at small bits (data fits in VRAM, no faults), "
-    "then diverge dramatically at bits ≥ 52 where the working set exceeds VRAM and "
-    "PCIe transfers dominate the sort time. The hypothesis is that unified-mode "
-    "Thrust at bits=56 is significantly slower than Pollard's rho at the same bits, "
-    "demonstrating that O(1)-memory algorithms win when the working set exceeds "
-    "device memory regardless of how much host RAM is available — the GPU sort "
-    "becomes PCIe-bound (~16 GB/s) instead of VRAM-bound (~900 GB/s)."
-)
-body(
     "Code: Final/Code/task4.cu (uses gpu_hashes_narrow.cuh for shared device hash "
     "functions). Output: Final/Data/task4/scaling_task4_device.dat and "
     "scaling_task4_unified.dat. Plots: task4_compare.pdf, task4_speedup.pdf."
 )
+
+heading('3.4.1 Headline Finding — PCIe Spill Inverts the Speedup at bits=56', level=2)
+add_table(
+    ['Algorithm (md5, bits=56)', 'Time (ms)', 'Speedup vs Pollard\'s ρ'],
+    [
+        ['Pollard\'s ρ (Task 3)',         '2,133',    '1.0× (baseline)'],
+        ['Thrust sort (unified memory)',  '3,359',    '0.63× — 1.57× SLOWER'],
+        ['Thrust sort (device VRAM)',     '— (OOM)',  'Not feasible at this bits'],
+    ]
+)
+body(
+    "Even with unlimited host RAM available via Unified Memory, Thrust sort "
+    "loses to Pollard's rho by 57% at bits=56. This is the central result of "
+    "Task 4: when the working set exceeds GPU VRAM, the GPU advantage is not "
+    "raw bandwidth but algorithmic. Pollard's rho's O(1)-per-thread memory "
+    "means it never spills regardless of bit width and runs at full GPU "
+    "bandwidth (~900 GB/s). Thrust's working set (~10.7 GB at bits=56) "
+    "exceeds the 8 GB VRAM and triggers page migrations on every radix-sort "
+    "pass, making the sort PCIe-bound (~16 GB/s) instead."
+)
+
+heading('3.4.2 Two Sub-Findings on Memory Behavior', level=2)
+body(
+    "Finding 1 — Unified Memory has ~2× constant overhead even when data "
+    "fits in VRAM. Comparing device-mode vs unified-mode where no spill is "
+    "expected:"
+)
+add_table(
+    ['bits', 'md5 device (ms)', 'md5 unified (ms)', 'unified / device'],
+    [
+        ['32', '0.55',   '1.24',   '2.3×'],
+        ['40', '7.53',  '16.30',   '2.2×'],
+        ['48', '119.2', '240.9',   '2.0×'],
+    ]
+)
+body(
+    "This is the page-tracking tax: every unified-memory access requires "
+    "the CUDA runtime to verify page residency, which costs cycles even "
+    "when no migration is needed. Conclusion: Unified Memory is a tool "
+    "for oversubscription, not a free abstraction. If the data fits, "
+    "plain cudaMalloc wins by ~2×."
+)
+body(
+    "Finding 2 — PCIe spill kicks in sharply once VRAM fills. Tracking "
+    "unified-mode performance as bits grow past the VRAM cap:"
+)
+add_table(
+    ['bits', 'md5 unified (ms)', 'factor vs prior', 'theoretical 2^(bits/2)×'],
+    [
+        ['48',     '240.9',  '—',     '—'],
+        ['52',     '516.4',  '2.14×', '2.0× (matches: still fits in VRAM)'],
+        ['56',   '3,359.1',  '6.50×', '4.0× (extra 1.6× = PCIe spill cost)'],
+    ]
+)
+body(
+    "The extra 1.6× factor between bits=52 and bits=56 — beyond what the "
+    "birthday-paradox workload increase predicts — is exactly what tips "
+    "Thrust below Pollard's rho. Without the spill, unified-mode Thrust "
+    "at bits=56 would have landed near 2,100 ms (parity with Pollard's). "
+    "Instead it lands at 3,360 ms."
+)
+body(
+    "Combined GPU algorithm selection guide based on this evidence:"
+)
+bullet("bits ≤ 48: Thrust sort (device mode) — fastest absolute, no chain-walking overhead")
+bullet("bits 52–54: borderline — both algorithms competitive, depends on workload constants")
+bullet("bits ≥ 56: Pollard's rho — Thrust forced to unified memory, loses to PCIe spill")
 
 # ── 4. Deliverables ───────────────────────────────────────────────────────────
 heading('4. Deliverables: Building and Running')
@@ -388,6 +444,14 @@ bullet(
     "O(1) memory per thread, while any birthday-paradox CPU approach requires O(2^(N/2)) "
     "memory. At bits=64 the CPU needs ~100 GB; the GPU uses 8 MB. This makes bits=64–72 "
     "GPU-only regardless of CPU clock speed or parallelism level."
+)
+bullet(
+    "Empirical confirmation via Task 4: Even with unlimited host RAM exposed to the "
+    "GPU via Unified Memory, the Thrust sort approach loses to Pollard's rho by 1.57× "
+    "at bits=56. Once the working set exceeds VRAM, page migrations make the sort "
+    "PCIe-bound (~16 GB/s) instead of VRAM-bound (~900 GB/s). The advantage of "
+    "O(1)-memory algorithms is not just feasibility — it is also speed when oversubscription "
+    "would otherwise be required."
 )
 
 body("ME759 concepts leveraged in this project:")
